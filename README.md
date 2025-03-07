@@ -157,6 +157,12 @@ bcdedit /debug on
 bcdedit /dbgsettings net hostip:<IP> port:<PORT>
 ```
 
+No net debugger support
+```
+bcdedit /debug on
+bcdedit /dbgsettings serial debugport:<COM interface #> baudrate:115200
+```
+
 ## Contributing to shadow-rs
 To contribute to `shadow-rs`, follow these steps:
 
