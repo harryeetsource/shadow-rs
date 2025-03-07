@@ -156,3 +156,30 @@ pub enum ShadowError {
     #[error("Error restoring a callback")]
     RestoringFailureCallback,
 }
+impl ShadowError {
+    pub fn to_ntstatus(&self) -> i32 {
+        match *self {
+            ShadowError::ApiCallFailed(_, status) => status as i32,
+            ShadowError::FunctionExecutionFailed(_, _) => 0xC0000001u32 as i32, // STATUS_UNSUCCESSFUL
+            ShadowError::InvalidMemory => 0xC0000005u32 as i32, // STATUS_ACCESS_VIOLATION
+            ShadowError::ProcessNotFound(_) => 0xC0000225u32 as i32, // STATUS_NOT_FOUND (example)
+            ShadowError::ThreadNotFound(_) => 0xC0000120u32 as i32, // Example code for thread not found
+            ShadowError::InvalidDeviceRequest => 0xC0000022u32 as i32, // STATUS_INVALID_DEVICE_REQUEST
+            ShadowError::NullPointer(_) => 0xC0000008u32 as i32, // STATUS_INVALID_HANDLE
+            ShadowError::StringConversionFailed(_) => 0xC0000023u32 as i32, // STATUS_BUFFER_TOO_SMALL
+            ShadowError::ModuleNotFound(_) => 0xC0000135u32 as i32, // STATUS_DLL_NOT_FOUND
+            ShadowError::DriverNotFound(_) => 0xC000012Fu32 as i32, // STATUS_DRIVER_ENTRYPOINT_NOT_FOUND (example)
+            ShadowError::PatternNotFound => 0xC0000225u32 as i32, // STATUS_NOT_FOUND
+            ShadowError::FunctionNotFound(_) => 0xC0000142u32 as i32, // STATUS_DLL_INIT_FAILED (example)
+            ShadowError::UnknownFailure(_, _) => 0xC0000001u32 as i32, // STATUS_UNSUCCESSFUL
+            ShadowError::HookFailure => 0xC0000100u32 as i32, // Example error code for hook failure
+            ShadowError::BufferTooSmall => 0xC0000023u32 as i32, // STATUS_BUFFER_TOO_SMALL
+            ShadowError::MisalignedBuffer => 0xC0000090u32 as i32, // STATUS_DATATYPE_MISALIGNMENT
+            ShadowError::CallbackNotFound => 0xC0000123u32 as i32, // Example error code for callback not found
+            ShadowError::IndexNotFound(_) => 0xC0000225u32 as i32, // STATUS_NOT_FOUND
+            ShadowError::RemoveFailureCallback => 0xC0000120u32 as i32, // Example code
+            ShadowError::InvalidListEntry => 0xC0000001u32 as i32, // STATUS_UNSUCCESSFUL
+            ShadowError::RestoringFailureCallback => 0xC0000120u32 as i32, // Example code
+        }
+    }
+}
