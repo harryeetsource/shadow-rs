@@ -1,0 +1,2 @@
+Registry hiding only keeps a list of reg keys to be hidden. Have to implement a hook on ZwEnumerateKey to actually hide the key.
+Improve error handling across all modules.
