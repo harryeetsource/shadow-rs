@@ -173,7 +173,7 @@ impl IoctlManager {
                 };
         
                 // Log final status and update IoStatus.
-                log::info!("HIDE/UNHIDE PROCESS handler completed for PID: {} with status: {}", pid, status);
+                log::info!("HIDE/UNHIDE PROCESS handler completed for PID: {} with status: {:#X}", pid, status as u32);
                 (*irp).IoStatus.Information = core::mem::size_of::<TargetProcess>() as u64;
                 Ok(status)
             }
