@@ -123,8 +123,8 @@ impl Registry {
             DeviceIoControl(
                 self.driver_handle,
                 ioctl_code,
-                &mut info_registry as *mut _ as *mut core::ffi::c_void,
-                core::mem::size_of::<TargetRegistry>() as u32,
+                &mut info_registry as *mut _ as *mut c_void,
+                std::mem::size_of::<TargetRegistry>() as u32,
                 null_mut(),
                 0,
                 &mut return_buffer,
