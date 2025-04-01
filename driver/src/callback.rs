@@ -2,7 +2,7 @@
 
 use core::{
     ffi::c_void,
-    ptr::{null_mut}
+    ptr::{null_mut, addr_of_mut}
 };
 
 use alloc::{string::String, vec::Vec};
@@ -100,12 +100,12 @@ fn bug_check(&self) -> bool {
             Version: OB_FLT_REGISTRATION_VERSION as u16,
             OperationRegistrationCount: 1,
             Altitude: altitude.to_unicode(), // Use the original UNICODE_STRING for the API call.
-            RegistrationContext: core::ptr::null_mut(),
+            RegistrationContext: null_mut(),
             OperationRegistration: &mut op_reg,
         };
     
         let status = unsafe { 
-            ObRegisterCallbacks(&mut cb_reg, core::ptr::addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_THREAD))
+            ObRegisterCallbacks(&mut cb_reg, addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_THREAD))
         };
         if NT_SUCCESS(status) {
             log::info!("Thread callback registered successfully with altitude {}", altitude_str);
@@ -135,12 +135,12 @@ fn bug_check(&self) -> bool {
             Version: OB_FLT_REGISTRATION_VERSION as u16,
             OperationRegistrationCount: 1,
             Altitude: altitude.to_unicode(),
-            RegistrationContext: core::ptr::null_mut(),
+            RegistrationContext: null_mut(),
             OperationRegistration: &mut op_reg,
         };
     
         let status = unsafe { 
-            ObRegisterCallbacks(&mut cb_reg, core::ptr::addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_PROCESS))
+            ObRegisterCallbacks(&mut cb_reg, addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_PROCESS))
         };
         if NT_SUCCESS(status) {
             log::info!("Process callback registered successfully with altitude {}", altitude_str);
@@ -168,9 +168,9 @@ fn bug_check(&self) -> bool {
                 Some(registry_callback),
                 &altitude,
                 self.driver as *mut DRIVER_OBJECT as *mut core::ffi::c_void,
-                core::ptr::null_mut(),
-                core::ptr::addr_of_mut!(CALLBACK_REGISTRY),
-                core::ptr::null_mut(),
+                null_mut(),
+                addr_of_mut!(CALLBACK_REGISTRY),
+                null_mut(),
             ) 
         };
     
@@ -366,7 +366,7 @@ pub mod driver {
 const MAX_PID: usize = 100;
 
 /// Handle for the process callback registration.
-pub static mut CALLBACK_REGISTRATION_HANDLE_PROCESS: *mut core::ffi::c_void = core::ptr::null_mut();
+pub static mut CALLBACK_REGISTRATION_HANDLE_PROCESS: *mut core::ffi::c_void = null_mut();
 
 /// List of target PIDs protected by a mutex.
 static TARGET_PIDS: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_PID)));
@@ -488,7 +488,7 @@ pub mod process {
 const MAX_TID: usize = 100;
 
 /// Handle for the thread callback registration.
-pub static mut CALLBACK_REGISTRATION_HANDLE_THREAD: *mut core::ffi::c_void = core::ptr::null_mut();
+pub static mut CALLBACK_REGISTRATION_HANDLE_THREAD: *mut core::ffi::c_void = null_mut();
 
 /// List of the target TIDs
 static TARGET_TIDS: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_TID)));

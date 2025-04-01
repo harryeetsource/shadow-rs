@@ -121,6 +121,14 @@ pub unsafe extern "C" fn registry_callback(
 }
 
 /// Handles the pre-delete key operation.
+///
+/// # Arguments
+///
+/// * `info` - A pointer to `REG_DELETE_KEY_INFORMATION`.
+///
+/// # Returns
+///
+/// * A status code indicating success or failure.
 unsafe fn pre_delete_key(info: *mut REG_DELETE_KEY_INFORMATION) -> NTSTATUS {
     if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
         return STATUS_SUCCESS;
@@ -147,6 +155,14 @@ unsafe fn pre_delete_key(info: *mut REG_DELETE_KEY_INFORMATION) -> NTSTATUS {
 }
 
 /// Performs the post-operation to enumerate registry key values.
+///
+/// # Arguments
+///
+/// * `info` - Pointer to the information structure of the post-execution logging operation.
+///
+/// # Returns
+///
+/// * Returns the status of the operation. If the key value is found and handled correctly, returns `STATUS_SUCCESS`.
 unsafe fn post_enumerate_key_value(info: *mut REG_POST_OPERATION_INFORMATION) -> NTSTATUS {
     if !NT_SUCCESS((*info).Status) {
         return (*info).Status;
@@ -225,7 +241,15 @@ unsafe fn post_enumerate_key_value(info: *mut REG_POST_OPERATION_INFORMATION) ->
     ZwClose(key_handle);
     STATUS_SUCCESS
 }
-
+/// Performs the post-operation to enumerate registry keys.
+///
+/// # Arguments
+///
+/// * `info` - Pointer to the information structure of the post-execution logging operation.
+///
+/// # Returns
+///
+/// * Returns the status of the operation, keeping the original status if the previous operation failed.
 unsafe fn post_enumerate_key(info: *mut REG_POST_OPERATION_INFORMATION) -> NTSTATUS {
     if !NT_SUCCESS((*info).Status) {
         return (*info).Status;
@@ -306,8 +330,15 @@ unsafe fn post_enumerate_key(info: *mut REG_POST_OPERATION_INFORMATION) -> NTSTA
 
 
 
-
 /// Handles the pre-query key operation.
+///
+/// # Arguments
+///
+/// * `info` - A pointer to `REG_QUERY_KEY_INFORMATION`.
+///
+/// # Returns
+///
+/// * A status code indicating success or failure.
 unsafe fn pre_query_key(info: *mut REG_QUERY_KEY_INFORMATION) -> NTSTATUS {
     if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
         
@@ -330,6 +361,14 @@ unsafe fn pre_query_key(info: *mut REG_QUERY_KEY_INFORMATION) -> NTSTATUS {
 }
 
 /// Handles the pre-delete value key operation.
+///
+/// # Arguments
+///
+/// * `info` - A pointer to `REG_DELETE_VALUE_KEY_INFORMATION`.
+///
+/// # Returns
+///
+/// * A status code indicating success or failure.
 unsafe fn pre_delete_value_key(info: *mut REG_DELETE_VALUE_KEY_INFORMATION) -> NTSTATUS {
     if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
         return STATUS_SUCCESS;
@@ -373,6 +412,14 @@ unsafe fn pre_delete_value_key(info: *mut REG_DELETE_VALUE_KEY_INFORMATION) -> N
 }
 
 /// Handles the pre-set value key operation.
+///
+/// # Arguments
+///
+/// * `info` - A pointer to `REG_SET_VALUE_KEY_INFORMATION`.
+///
+/// # Returns
+///
+/// * A status code indicating success or failure.
 unsafe fn pre_set_value_key(info: *mut REG_SET_VALUE_KEY_INFORMATION) -> NTSTATUS {
     if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
         return STATUS_SUCCESS;
@@ -416,6 +463,15 @@ unsafe fn pre_set_value_key(info: *mut REG_SET_VALUE_KEY_INFORMATION) -> NTSTATU
 }
 
 /// Reads the key name from the registry information.
+///
+/// # Arguments
+///
+/// * `info` - A pointer to the registry information.
+///
+/// # Returns
+///
+/// * `Ok(String)` - The key name.
+/// * `Err(NTSTATUS)` - error status.
 pub unsafe fn read_key<T: RegistryInfo>(info: *mut T) -> Result<String, NTSTATUS> {
     let object_ptr = (*info).get_object();
     

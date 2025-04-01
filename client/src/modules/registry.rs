@@ -1,4 +1,5 @@
 use crate::utils::open_driver;
+use std::{ffi::c_void, ptr::null_mut};
 use common::structs::TargetRegistry;
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError, HANDLE},
@@ -63,12 +64,12 @@ impl Registry {
             DeviceIoControl(
                 self.driver_handle,
                 ioctl_code,
-                &mut info_registry as *mut _ as *mut core::ffi::c_void,
+                &mut info_registry as *mut _ as *mut c_void,
                 core::mem::size_of::<TargetRegistry>() as u32,
-                core::ptr::null_mut(),
+                null_mut(),
                 0,
                 &mut return_buffer,
-                core::ptr::null_mut(),
+                null_mut(),
             )
         };
     
@@ -125,10 +126,10 @@ impl Registry {
                 ioctl_code,
                 &mut info_registry as *mut _ as *mut core::ffi::c_void,
                 core::mem::size_of::<TargetRegistry>() as u32,
-                core::ptr::null_mut(),
+                null_mut(),
                 0,
                 &mut return_buffer,
-                core::ptr::null_mut(),
+                null_mut(),
             )
         };
     
