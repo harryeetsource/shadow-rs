@@ -149,7 +149,7 @@ impl<'a> Callback<'a> {
             CmRegisterCallbackEx(
                 Some(registry_callback),
                 &altitude,
-                self.driver as *mut DRIVER_OBJECT as *mut core::ffi::c_void,
+                self.driver as *mut DRIVER_OBJECT as *mut c_void,
                 null_mut(),
                 addr_of_mut!(CALLBACK_REGISTRY),
                 null_mut(),
@@ -320,7 +320,7 @@ pub mod driver {
 // Maximum Pids
 const MAX_PID: usize = 100;
 /// Handle for the process callback registration.
-pub static mut CALLBACK_REGISTRATION_HANDLE_PROCESS: *mut core::ffi::c_void = null_mut();
+pub static mut CALLBACK_REGISTRATION_HANDLE_PROCESS: *mut c_void = null_mut();
 /// List of target PIDs protected by a mutex.
 static TARGET_PIDS: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_PID)));
 pub mod process {
@@ -404,7 +404,7 @@ pub mod process {
     /// * A status code indicating the success or failure of the operation.
     pub unsafe extern "C" 
     fn on_pre_open_process(
-        _registration_context: *mut core::ffi::c_void,
+        _registration_context: *mut c_void,
         info: *mut OB_PRE_OPERATION_INFORMATION,
     ) -> Type {
         if (*info).__bindgen_anon_1.__bindgen_anon_1.KernelHandle() == 1 {
@@ -431,7 +431,7 @@ pub mod process {
 // Maximum TIDS
 const MAX_TID: usize = 100;
 /// Handle for the thread callback registration.
-pub static mut CALLBACK_REGISTRATION_HANDLE_THREAD: *mut core::ffi::c_void = null_mut();
+pub static mut CALLBACK_REGISTRATION_HANDLE_THREAD: *mut c_void = null_mut();
 /// List of the target TIDs
 static TARGET_TIDS: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_TID)));
 pub mod thread {

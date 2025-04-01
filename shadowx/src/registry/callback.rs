@@ -79,9 +79,9 @@ fn update_and_maybe_flush(key: &str, reg_path: *const UNICODE_STRING) {
 ///
 /// * A status code indicating the result of the operation.
 pub unsafe extern "C" fn registry_callback(
-    _callback_context: *mut core::ffi::c_void,
-    argument1: *mut core::ffi::c_void,
-    argument2: *mut core::ffi::c_void,
+    _callback_context: *mut c_void,
+    argument1: *mut c_void,
+    argument2: *mut c_void,
 ) -> NTSTATUS {
 
     
