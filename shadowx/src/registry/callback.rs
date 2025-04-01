@@ -10,6 +10,7 @@ use alloc::collections::BTreeMap;
 use crate::alloc::string::ToString;
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
+use core::ptr::addr_of_mut;
 use crate::{
     registry::{
         utils::{check_key, enumerate_key},
@@ -477,9 +478,9 @@ pub unsafe fn read_key<T: RegistryInfo>(info: *mut T) -> Result<String, NTSTATUS
     
     let mut reg_path = core::ptr::null::<UNICODE_STRING>();
     let status = CmCallbackGetKeyObjectIDEx(
-        core::ptr::addr_of_mut!(CALLBACK_REGISTRY),
+        addr_of_mut!(CALLBACK_REGISTRY),
         object_ptr,
-        core::ptr::null_mut(),
+        null_mut(),
         &mut reg_path,
         0,
     );
