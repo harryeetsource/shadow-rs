@@ -65,14 +65,13 @@ impl Registry {
                 self.driver_handle,
                 ioctl_code,
                 &mut info_registry as *mut _ as *mut c_void,
-                core::mem::size_of::<TargetRegistry>() as u32,
+                std::mem::size_of::<TargetRegistry>() as u32,
                 null_mut(),
                 0,
                 &mut return_buffer,
                 null_mut(),
             )
         };
-    
         if status == 0 {
             log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe { GetLastError() });
         } else {
@@ -131,8 +130,7 @@ impl Registry {
                 &mut return_buffer,
                 null_mut(),
             )
-        };
-    
+        };   
         if status == 0 {
             log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe { GetLastError() });
         } else {
@@ -145,7 +143,6 @@ impl Registry {
         }
     }
 }
-
 impl Drop for Registry {
     /// Ensures the driver handle is closed when `Registry` goes out of scope.
     fn drop(&mut self) {
