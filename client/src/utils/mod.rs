@@ -99,6 +99,7 @@ pub fn init_logger(verbose: u8) {
         .init();
 }
 
+
 /// Validates that a given file has a `.sys` extension.
 ///
 /// # Arguments

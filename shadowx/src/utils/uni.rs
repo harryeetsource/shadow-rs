@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use wdk_sys::UNICODE_STRING;
-
+use alloc::string::String;
 /// A wrapper around a `Vec<u16>` representing a Unicode string.
 #[derive(Default)]
 pub struct OwnedUnicodeString {
@@ -26,6 +26,19 @@ impl OwnedUnicodeString {
             MaximumLength: (self.buffer.len() * size_of::<u16>()) as u16,
             Buffer: self.buffer.as_ptr() as *mut u16,
         }
+    }
+    pub fn to_string_lossy(&self) -> String {
+        // Create a slice without the null terminator, if present.
+        let utf16_slice = if let Some((&last, elems)) = self.buffer.split_last() {
+            if last == 0 {
+                elems
+            } else {
+                self.buffer.as_slice()
+            }
+        } else {
+            self.buffer.as_slice()
+        };
+        String::from_utf16_lossy(utf16_slice)
     }
 }
 

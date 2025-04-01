@@ -2,7 +2,7 @@
 
 use core::{
     ffi::c_void,
-    ptr::{null_mut, addr_of_mut}
+    ptr::{null_mut}
 };
 
 use alloc::{string::String, vec::Vec};
@@ -62,23 +62,33 @@ impl<'a> Callback<'a> {
 
     /// Registers the BugCheck (crash dump) callback.
     #[inline(always)]
-    fn bug_check(&self) -> bool {
-        unsafe {
-            let module = c"ShadowBugCheck";
-            BUG_CHECK.State = 0;
-            KeRegisterBugCheckReasonCallback(
-                &mut BUG_CHECK, 
-                Some(bug_check_remove_pages), 
-                KbCallbackRemovePages, 
-                module.as_ptr().cast_mut().cast()
-            ) != 0
+fn bug_check(&self) -> bool {
+    unsafe {
+        let module = c"ShadowBugCheck";
+        BUG_CHECK.State = 0;
+        let result = KeRegisterBugCheckReasonCallback(
+            &mut BUG_CHECK,
+            Some(bug_check_remove_pages),
+            KbCallbackRemovePages,
+            module.as_ptr().cast_mut().cast()
+        );
+        if result != 0 {
+            log::info!("BugCheck callback registered successfully.");
+            true
+        } else {
+            log::error!("Failed to register BugCheck callback.");
+            false
         }
     }
+}
+
 
     /// Registers callbacks for thread operations.
     fn thread(&self) -> NTSTATUS {
-        // Creating callbacks related to thread operations
         let altitude = uni::str_to_unicode("31243.5223");
+        let altitude_str = altitude.to_string_lossy(); // Convert for logging
+        log::debug!("Attempting to register thread callback with altitude {}", altitude_str);
+        
         let mut op_reg = OB_OPERATION_REGISTRATION {
             ObjectType: unsafe { PsThreadType },
             Operations: OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE,
@@ -89,96 +99,132 @@ impl<'a> Callback<'a> {
         let mut cb_reg = OB_CALLBACK_REGISTRATION {
             Version: OB_FLT_REGISTRATION_VERSION as u16,
             OperationRegistrationCount: 1,
-            Altitude: altitude.to_unicode(),
-            RegistrationContext: null_mut(),
+            Altitude: altitude.to_unicode(), // Use the original UNICODE_STRING for the API call.
+            RegistrationContext: core::ptr::null_mut(),
             OperationRegistration: &mut op_reg,
         };
-
-        let status = unsafe { ObRegisterCallbacks(&mut cb_reg, addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_THREAD)) };
-        if !NT_SUCCESS(status) {
-            log::error!("ObRegisterCallbacks [{}] Failed With Status: {}", line!(), status);
+    
+        let status = unsafe { 
+            ObRegisterCallbacks(&mut cb_reg, core::ptr::addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_THREAD))
+        };
+        if NT_SUCCESS(status) {
+            log::info!("Thread callback registered successfully with altitude {}", altitude_str);
+        } else {
+            log::error!("ObRegisterCallbacks for thread failed with status: {}", status);
         }
-
         status
     }
-
+    
+    
+    
+    
     /// Registers callbacks for process operations.
     fn process(&self) -> NTSTATUS {
         let altitude = uni::str_to_unicode("31243.5222");
+        let altitude_str = altitude.to_string_lossy();
+        log::debug!("Attempting to register process callback with altitude {}", altitude_str);
+        
         let mut op_reg = OB_OPERATION_REGISTRATION {
             ObjectType: unsafe { PsProcessType },
             Operations: OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE,
             PreOperation: Some(process::on_pre_open_process),
             PostOperation: None,
         };
-
+    
         let mut cb_reg = OB_CALLBACK_REGISTRATION {
             Version: OB_FLT_REGISTRATION_VERSION as u16,
             OperationRegistrationCount: 1,
             Altitude: altitude.to_unicode(),
-            RegistrationContext: null_mut(),
+            RegistrationContext: core::ptr::null_mut(),
             OperationRegistration: &mut op_reg,
         };
-
-        let status = unsafe { ObRegisterCallbacks(&mut cb_reg, addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_PROCESS)) };
-        if !NT_SUCCESS(status) {
-            log::error!("ObRegisterCallbacks [{}] Failed With Status: {}", line!(), status);
+    
+        let status = unsafe { 
+            ObRegisterCallbacks(&mut cb_reg, core::ptr::addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_PROCESS))
+        };
+        if NT_SUCCESS(status) {
+            log::info!("Process callback registered successfully with altitude {}", altitude_str);
+        } else {
+            log::error!("ObRegisterCallbacks for process failed with status: {}", status);
         }
-
         status
     }
+    
+    
+    
+    
 
-    /// Registers callbacks for registry operations.
     fn registry(&mut self) -> NTSTATUS {
-        // Creating callbacks related to registry operations
-        let altitude = uni::str_to_unicode("31422.6172").to_unicode();
+        // Convert to OwnedUnicodeString for logging purposes
+        let altitude_owned = uni::str_to_unicode("31422.6172");
+        let altitude_str = altitude_owned.to_string_lossy();
+        // Use the UNICODE_STRING for the actual API call.
+        let altitude = altitude_owned.to_unicode();
+        
+        log::debug!("Attempting to register registry callback with altitude {}", altitude_str);
+        
         let status = unsafe { 
             CmRegisterCallbackEx(
                 Some(registry_callback),
                 &altitude,
-                self.driver as *mut DRIVER_OBJECT as *mut c_void,
-                null_mut(),
-                addr_of_mut!(CALLBACK_REGISTRY),
-                null_mut(),
+                self.driver as *mut DRIVER_OBJECT as *mut core::ffi::c_void,
+                core::ptr::null_mut(),
+                core::ptr::addr_of_mut!(CALLBACK_REGISTRY),
+                core::ptr::null_mut(),
             ) 
         };
-
-        if !NT_SUCCESS(status) {
-            log::error!("CmRegisterCallbackEx Failed With Status: {status}");
+    
+        if NT_SUCCESS(status) {
+            log::info!("Registry callback registered successfully with altitude {}", altitude_str);
+        } else {
+            log::error!("CmRegisterCallbackEx failed with status: {}", status);
         }
-
+    
         status
     }
+    
+    
+    
+    
 
     /// Registers an image load notification routine.
     fn image(&self) -> NTSTATUS {
-        unsafe { PsSetLoadImageNotifyRoutine(Some(image_notify_routine)) }
+        let status = unsafe { PsSetLoadImageNotifyRoutine(Some(image_notify_routine)) };
+        if NT_SUCCESS(status) {
+            log::info!("Image load notify callback registered successfully.");
+        } else {
+            log::error!("PsSetLoadImageNotifyRoutine failed with status: {}", status);
+        }
+        status
     }
+    
 
     /// Unloads the driver and unregisters all active callbacks.
     pub fn unload() {
         unsafe {
-            // Unregister process and thread creation callbacks
             if !CALLBACK_REGISTRATION_HANDLE_PROCESS.is_null() {
                 ObUnRegisterCallbacks(CALLBACK_REGISTRATION_HANDLE_PROCESS);
+                log::info!("Process callback unregistered successfully.");
             }
-
+    
             if !CALLBACK_REGISTRATION_HANDLE_THREAD.is_null() {
                 ObUnRegisterCallbacks(CALLBACK_REGISTRATION_HANDLE_THREAD);
+                log::info!("Thread callback unregistered successfully.");
             }
-
-            // Unregister registry modification callback
+    
             if CALLBACK_REGISTRY.QuadPart != 0 {
                 CmUnRegisterCallback(CALLBACK_REGISTRY);
+                log::info!("Registry callback unregistered successfully.");
             }
     
-            // Unregister bug check (crash dump) callback
             KeDeregisterBugCheckReasonCallback(&mut BUG_CHECK);
+            log::info!("BugCheck callback unregistered successfully.");
     
-            // Unregister image load notification callback
             PsRemoveLoadImageNotifyRoutine(Some(image_notify_routine));
+            log::info!("Image load notify callback unregistered successfully.");
         }
     }
+    
 }
 
 /// Callback function triggered during a system crash (bug check).

