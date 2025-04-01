@@ -62,7 +62,7 @@ impl<'a> Callback<'a> {
 
     /// Registers the BugCheck (crash dump) callback.
     #[inline(always)]
-fn bug_check(&self) -> bool {
+    fn bug_check(&self) -> bool {
     unsafe {
         let module = c"ShadowBugCheck";
         BUG_CHECK.State = 0;
@@ -80,8 +80,7 @@ fn bug_check(&self) -> bool {
             false
         }
     }
-}
-
+    }
 
     /// Registers callbacks for thread operations.
     fn thread(&self) -> NTSTATUS {
@@ -114,10 +113,6 @@ fn bug_check(&self) -> bool {
         }
         status
     }
-    
-    
-    
-    
     /// Registers callbacks for process operations.
     fn process(&self) -> NTSTATUS {
         let altitude = uni::str_to_unicode("31243.5222");
@@ -149,11 +144,6 @@ fn bug_check(&self) -> bool {
         }
         status
     }
-    
-    
-    
-    
-
     fn registry(&mut self) -> NTSTATUS {
         // Convert to OwnedUnicodeString for logging purposes
         let altitude_owned = uni::str_to_unicode("31422.6172");
@@ -182,11 +172,6 @@ fn bug_check(&self) -> bool {
     
         status
     }
-    
-    
-    
-    
-
     /// Registers an image load notification routine.
     fn image(&self) -> NTSTATUS {
         let status = unsafe { PsSetLoadImageNotifyRoutine(Some(image_notify_routine)) };
@@ -197,8 +182,6 @@ fn bug_check(&self) -> bool {
         }
         status
     }
-    
-
     /// Unloads the driver and unregisters all active callbacks.
     pub fn unload() {
         unsafe {
@@ -361,7 +344,6 @@ pub mod driver {
         }
     }
 }
-
 // Maximum Pids
 const MAX_PID: usize = 100;
 
