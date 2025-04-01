@@ -325,6 +325,7 @@ pub static mut CALLBACK_REGISTRATION_HANDLE_PROCESS: *mut c_void = null_mut();
 static TARGET_PIDS: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_PID)));
 pub mod process {
     use alloc::vec::Vec;
+    use core::ffi::c_void;
     use super::TARGET_PIDS;
     use common::structs::TargetProcess;
     use wdk_sys::ntddk::PsGetProcessId;
