@@ -1,6 +1,4 @@
 #![allow(non_upper_case_globals)]
-
-use crate::alloc::string::ToString;
 use crate::{
     registry::{
         Registry,
@@ -8,12 +6,9 @@ use crate::{
     },
     utils::{pool::PoolMemory, valid_kernel_memory},
 };
-use alloc::collections::BTreeMap;
 use alloc::{format, string::String};
 use core::ptr::addr_of_mut;
-use core::sync::atomic::{AtomicU64, Ordering};
 use core::{ffi::c_void, ptr::null_mut};
-use spin::Mutex;
 use wdk::println;
 use wdk_sys::_REG_NOTIFY_CLASS::*;
 use wdk_sys::ntddk::*;
@@ -26,48 +21,6 @@ use super::{
 
 /// Handle for Registry Callback.
 pub static mut CALLBACK_REGISTRY: LARGE_INTEGER = unsafe { core::mem::zeroed() };
-static KEY_LOG_CACHE: Mutex<BTreeMap<String, (u64, u64)>> = Mutex::new(BTreeMap::new());
-// A counter to trigger cache flush after a certain number of updates.
-static UPDATE_COUNT: AtomicU64 = AtomicU64::new(0);
-const FLUSH_THRESHOLD: u64 = 20; // flush cache every 20 updates
-fn update_key_log_cache(key: &str, reg_path: *const UNICODE_STRING) {
-    let addr = reg_path as u64;
-    let mut cache = KEY_LOG_CACHE.lock();
-    if let Some((min, max)) = cache.get_mut(key) {
-        if addr < *min {
-            *min = addr;
-        }
-        if addr > *max {
-            *max = addr;
-        }
-    } else {
-        cache.insert(key.to_string(), (addr, addr));
-    }
-}
-
-/// Flush the cache: log one consolidated message per key and clear the cache.
-fn flush_key_log_cache() {
-    let mut cache = KEY_LOG_CACHE.lock();
-    for (key, (min, max)) in cache.iter() {
-        log::info!(
-            "read_key: Retrieved key name '{}' from reg_path range: 0x{:X} - 0x{:X}",
-            key,
-            min,
-            max
-        );
-    }
-    cache.clear();
-}
-
-/// Update the cache and flush if the update count exceeds the threshold.
-fn update_and_maybe_flush(key: &str, reg_path: *const UNICODE_STRING) {
-    update_key_log_cache(key, reg_path);
-    let count = UPDATE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
-    if count >= FLUSH_THRESHOLD {
-        flush_key_log_cache();
-        UPDATE_COUNT.store(0, Ordering::Relaxed);
-    }
-}
 /// The registry callback function handles registry-related operations based on the notification class.
 ///
 /// # Arguments
@@ -498,8 +451,7 @@ pub unsafe fn read_key<T: RegistryInfo>(info: *mut T) -> Result<String, NTSTATUS
     let key_slice = core::slice::from_raw_parts(buffer, (length / 2) as usize);
     let key_name = String::from_utf16_lossy(key_slice);
 
-    // Instead of logging each duplicate message, update the cache.
-    update_and_maybe_flush(&key_name, reg_path);
+    
 
     CmCallbackReleaseKeyObjectIDEx(reg_path);
     Ok(key_name)
