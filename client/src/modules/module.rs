@@ -58,7 +58,10 @@ impl Module {
         };
 
         if status == 0 {
-            log::error!("DeviceIoControl failed with status: 0x{:08X} for PID: {pid}", unsafe { GetLastError() } );
+            log::error!(
+                "DeviceIoControl failed with status: 0x{:08X} for PID: {pid}",
+                unsafe { GetLastError() }
+            );
         } else {
             let total_modules = return_buffer as usize / size_of::<ModuleInfo>();
             log::info!("Total modules found for PID {pid}: {total_modules}");
@@ -74,7 +77,10 @@ impl Module {
                             continue;
                         }
                     };
-                    println!("[{}] {:p} {}", module.index, module.address as *mut c_void, name);
+                    println!(
+                        "[{}] {:p} {}",
+                        module.index, module.address as *mut c_void, name
+                    );
                 }
             }
 
@@ -115,7 +121,9 @@ impl Module {
         };
 
         if status == 0 {
-            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe { GetLastError() });
+            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
             log::info!("Module successfully hidden");
         }

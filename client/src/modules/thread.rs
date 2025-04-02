@@ -1,4 +1,4 @@
-use crate::utils::{open_driver, Options};
+use crate::utils::{Options, open_driver};
 use common::structs::TargetThread;
 use std::{ffi::c_void, mem::size_of, ptr::null_mut};
 use windows_sys::Win32::{
@@ -45,7 +45,10 @@ impl Thread {
                 ..Default::default()
             };
 
-            log::debug!( "Sending DeviceIoControl command to {} thread", if enable { "hide" } else { "unhide" });
+            log::debug!(
+                "Sending DeviceIoControl command to {} thread",
+                if enable { "hide" } else { "unhide" }
+            );
             let status = unsafe {
                 DeviceIoControl(
                     self.driver_handle,
@@ -62,7 +65,11 @@ impl Thread {
             if status == 0 {
                 log::error!("DeviceIoControl Failed with status: 0x{:08X}", status);
             } else {
-                log::info!("Thread with TID {} successfully {}hidden", tid, if enable { "" } else { "un" });
+                log::info!(
+                    "Thread with TID {} successfully {}hidden",
+                    tid,
+                    if enable { "" } else { "un" }
+                );
             }
         } else {
             log::error!("TID not supplied");
@@ -89,7 +96,10 @@ impl Thread {
                 ..Default::default()
             };
 
-            log::debug!("Sending DeviceIoControl command to {} thread protection", if enable { "enable" } else { "disable" });
+            log::debug!(
+                "Sending DeviceIoControl command to {} thread protection",
+                if enable { "enable" } else { "disable" }
+            );
             let status = unsafe {
                 DeviceIoControl(
                     self.driver_handle,
@@ -106,7 +116,10 @@ impl Thread {
             if status == 0 {
                 log::error!("DeviceIoControl Failed with status: 0x{:08X}", status);
             } else {
-                log::info!("Thread TID {tid} with anti-kill and dumping functions {}", if enable { "enabled" } else { "disabled" });
+                log::info!(
+                    "Thread TID {tid} with anti-kill and dumping functions {}",
+                    if enable { "enabled" } else { "disabled" }
+                );
             }
         } else {
             log::error!("TID not supplied");

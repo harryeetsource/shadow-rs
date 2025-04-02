@@ -1,4 +1,4 @@
-use wdk_sys::{ntddk::ZwClose, HANDLE};
+use wdk_sys::{HANDLE, ntddk::ZwClose};
 
 /// A wrapper around a Windows `HANDLE` that automatically closes the handle when dropped.
 ///

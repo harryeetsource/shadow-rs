@@ -1,8 +1,8 @@
 use crate::{
+    Result,
     error::ShadowError,
     lock::with_push_lock_exclusive,
     offsets::{get_thread_list_entry_offset, get_thread_lock_offset},
-    Result,
 };
 use alloc::vec::Vec;
 use common::structs::TargetThread;
@@ -55,7 +55,10 @@ impl Thread {
         if NT_SUCCESS(status) {
             Ok(Self { e_thread: thread })
         } else {
-            Err(ShadowError::ApiCallFailed("PsLookupThreadByThreadId", status))
+            Err(ShadowError::ApiCallFailed(
+                "PsLookupThreadByThreadId",
+                status,
+            ))
         }
     }
 }

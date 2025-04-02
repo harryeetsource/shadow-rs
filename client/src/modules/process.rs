@@ -1,12 +1,12 @@
+use crate::{
+    PS_PROTECTED_SIGNER, PS_PROTECTED_TYPE,
+    utils::{Options, open_driver},
+};
 use common::structs::TargetProcess;
 use std::{ffi::c_void, mem::size_of, ptr::null_mut};
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError, HANDLE},
     System::IO::DeviceIoControl,
-};
-use crate::{
-    utils::{open_driver, Options},
-    PS_PROTECTED_SIGNER, PS_PROTECTED_TYPE,
 };
 
 /// Provides operations for managing processes through a driver interface.
@@ -38,7 +38,11 @@ impl Process {
     /// * `enable` - A boolean indicating whether to hide (`true`) or unhide (`false`) the Process.
     pub fn hide_unhide_process(&mut self, pid: Option<&u32>, ioctl_code: u32, enable: bool) {
         if let Some(pid_value) = pid {
-            log::info!("Preparing to {} process: {}", if enable { "hide" } else { "unhide" }, pid_value);
+            log::info!(
+                "Preparing to {} process: {}",
+                if enable { "hide" } else { "unhide" },
+                pid_value
+            );
             let pid = *pid_value as usize;
             let mut target_process = TargetProcess {
                 enable,
@@ -61,9 +65,15 @@ impl Process {
             };
 
             if status == 0 {
-                log::error!("DeviceIoControl Failed with status: 0x{:08X}", unsafe { GetLastError() });
+                log::error!("DeviceIoControl Failed with status: 0x{:08X}", unsafe {
+                    GetLastError()
+                });
             } else {
-                log::info!("Process with PID {} successfully {}hidden", pid, if enable { "" } else { "un" });
+                log::info!(
+                    "Process with PID {} successfully {}hidden",
+                    pid,
+                    if enable { "" } else { "un" }
+                );
             }
         } else {
             log::error!("PID not supplied");
@@ -100,7 +110,9 @@ impl Process {
             };
 
             if status == 0 {
-                log::error!("DeviceIoControl Failed with status: 0x{:08X}", unsafe { GetLastError() });
+                log::error!("DeviceIoControl Failed with status: 0x{:08X}", unsafe {
+                    GetLastError()
+                });
             } else {
                 log::info!("Process with PID {} terminated successfully", pid);
             }
@@ -119,7 +131,11 @@ impl Process {
     #[cfg(not(feature = "mapper"))]
     pub fn protection_process(&mut self, pid: Option<&u32>, ioctl_code: u32, enable: bool) {
         if let Some(pid_value) = pid {
-            log::info!("Preparing to {} protection for process: {}", if enable { "enable" } else { "disable" }, pid_value);
+            log::info!(
+                "Preparing to {} protection for process: {}",
+                if enable { "enable" } else { "disable" },
+                pid_value
+            );
             let pid = *pid_value as usize;
             let mut target_process = TargetProcess {
                 pid,
@@ -146,7 +162,11 @@ impl Process {
                     GetLastError()
                 });
             } else {
-                log::info!("Process with PID {} {} protection", pid, if enable { "enabled" } else { "disabled" });
+                log::info!(
+                    "Process with PID {} {} protection",
+                    pid,
+                    if enable { "enabled" } else { "disabled" }
+                );
             }
         } else {
             log::error!("PID not supplied");
@@ -181,7 +201,9 @@ impl Process {
         };
 
         if status == 0 {
-            log::error!("DeviceIoControl Failed with status: 0x{:08X}", unsafe { GetLastError() });
+            log::error!("DeviceIoControl Failed with status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
             let total_process = return_buffer as usize / size_of::<TargetProcess>();
             log::info!("Total Processes: {}", total_process);
@@ -210,7 +232,10 @@ impl Process {
         tp: &PS_PROTECTED_TYPE,
     ) {
         if let Some(pid_value) = pid {
-            log::info!("Preparing to apply signature protection for process: {}", pid_value);
+            log::info!(
+                "Preparing to apply signature protection for process: {}",
+                pid_value
+            );
             let pid = *pid_value as usize;
             let sg = *sg as usize;
             let tp = *tp as usize;
@@ -236,7 +261,9 @@ impl Process {
             };
 
             if status == 0 {
-                log::error!("DeviceIoControl Failed with status: 0x{:08X}", unsafe { GetLastError() });
+                log::error!("DeviceIoControl Failed with status: 0x{:08X}", unsafe {
+                    GetLastError()
+                });
             } else {
                 log::info!("Process with PID {} successfully protected", pid);
             }
@@ -273,7 +300,9 @@ impl Process {
             };
 
             if status == 0 {
-                log::error!("DeviceIoControl Failed with status: 0x{:08X}", unsafe { GetLastError() });
+                log::error!("DeviceIoControl Failed with status: 0x{:08X}", unsafe {
+                    GetLastError()
+                });
             } else {
                 log::info!("Process with PID {} elevated to System", pid);
             }

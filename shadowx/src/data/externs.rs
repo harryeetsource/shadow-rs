@@ -1,10 +1,7 @@
 use super::*;
-use wdk_sys::*;
+use crate::data::{KBUGCHECK_REASON_CALLBACK_RECORD, KBUGCHECK_REASON_CALLBACK_ROUTINE};
 use ntapi::ntexapi::SYSTEM_INFORMATION_CLASS;
-use crate::data::{
-    KBUGCHECK_REASON_CALLBACK_RECORD, 
-    KBUGCHECK_REASON_CALLBACK_ROUTINE
-};
+use wdk_sys::*;
 
 extern "C" {
     pub static mut IoDriverObjectType: *mut *mut _OBJECT_TYPE;

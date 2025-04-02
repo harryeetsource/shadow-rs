@@ -1,6 +1,6 @@
+use alloc::string::String;
 use alloc::vec::Vec;
 use wdk_sys::UNICODE_STRING;
-use alloc::string::String;
 /// A wrapper around a `Vec<u16>` representing a Unicode string.
 #[derive(Default)]
 pub struct OwnedUnicodeString {

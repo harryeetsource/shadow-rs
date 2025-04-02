@@ -1,25 +1,15 @@
-use wdk_sys::{NTSTATUS, STATUS_SUCCESS};
 use alloc::vec::Vec;
+use common::{enums::Callbacks, structs::CallbackInfoOutput};
 use spin::{Lazy, Mutex};
-use common::{
-    enums::Callbacks, 
-    structs::CallbackInfoOutput
-};
+use wdk_sys::{NTSTATUS, STATUS_SUCCESS};
 
 use crate::{
-    callback::find_callback_address, 
-    lock::with_push_lock_exclusive, 
-    modules
+    Result,
+    callback::CallbackResult,
+    data::{CM_CALLBACK, CallbackRestaure, LDR_DATA_TABLE_ENTRY},
+    error::ShadowError,
 };
-use crate::{
-    callback::CallbackResult, 
-    error::ShadowError, Result,
-    data::{
-        CallbackRestaure, 
-        CM_CALLBACK, 
-        LDR_DATA_TABLE_ENTRY
-    },
-};
+use crate::{callback::find_callback_address, lock::with_push_lock_exclusive, modules};
 
 /// Structure representing the Callback Registry.
 pub struct CallbackRegistry;
@@ -57,11 +47,12 @@ impl CallbackRegistry {
             .ok_or(ShadowError::IndexNotFound(index))?;
 
         // Retrieve the callback address based on the callback type
-        let (callback, count, lock) = if let CallbackResult::Registry(addr) = find_callback_address(&callback)? {
-            addr
-        } else {
-            return Err(ShadowError::CallbackNotFound);
-        };
+        let (callback, count, lock) =
+            if let CallbackResult::Registry(addr) = find_callback_address(&callback)? {
+                addr
+            } else {
+                return Err(ShadowError::CallbackNotFound);
+            };
 
         // Getting a lock to perform the restore operation
         with_push_lock_exclusive(lock as *mut u64, || {
@@ -100,11 +91,12 @@ impl CallbackRegistry {
     /// * `Err(ShadowError)` - if the callback address cannot be found.
     pub unsafe fn remove(callback: Callbacks, index: usize) -> Result<NTSTATUS> {
         // Retrieve the callback address based on the callback type
-        let (callbacks, count, lock) = if let CallbackResult::Registry(addr) = find_callback_address(&callback)? {
-            addr
-        } else {
-            return Err(ShadowError::CallbackNotFound);
-        };
+        let (callbacks, count, lock) =
+            if let CallbackResult::Registry(addr) = find_callback_address(&callback)? {
+                addr
+            } else {
+                return Err(ShadowError::CallbackNotFound);
+            };
 
         // Getting a lock to perform the remove operation
         with_push_lock_exclusive(lock as *mut u64, || {
@@ -161,11 +153,12 @@ impl CallbackRegistry {
     /// * Status of the operation. `STATUS_SUCCESS` if successful, `STATUS_UNSUCCESSFUL` otherwise.
     pub unsafe fn enumerate(callback: Callbacks) -> Result<Vec<CallbackInfoOutput>> {
         // Retrieve the callback address based on the callback type
-        let (callback, count, lock) = if let CallbackResult::Registry(addr) = find_callback_address(&callback)? {
-            addr
-        } else {
-            return Err(ShadowError::CallbackNotFound);
-        };
+        let (callback, count, lock) =
+            if let CallbackResult::Registry(addr) = find_callback_address(&callback)? {
+                addr
+            } else {
+                return Err(ShadowError::CallbackNotFound);
+            };
 
         let (mut ldr_data, module_count) = modules()?;
         let start_entry = ldr_data;

@@ -1,16 +1,11 @@
 use core::ptr::null_mut;
 use wdk_sys::ntddk::{
-    IoAllocateMdl, IoFreeMdl, 
-    MmMapLockedPagesSpecifyCache, 
-    MmProbeAndLockPages, MmUnlockPages, 
-    MmUnmapLockedPages
+    IoAllocateMdl, IoFreeMdl, MmMapLockedPagesSpecifyCache, MmProbeAndLockPages, MmUnlockPages,
+    MmUnmapLockedPages,
 };
 use wdk_sys::{
-    MdlMappingNoExecute, MDL, PUCHAR, 
-    _LOCK_OPERATION::IoModifyAccess, 
-    _MEMORY_CACHING_TYPE::MmCached, 
-    _MM_PAGE_PRIORITY::HighPagePriority, 
-    _MODE::KernelMode
+    _LOCK_OPERATION::IoModifyAccess, _MEMORY_CACHING_TYPE::MmCached,
+    _MM_PAGE_PRIORITY::HighPagePriority, _MODE::KernelMode, MDL, MdlMappingNoExecute, PUCHAR,
 };
 
 /// Memory Descriptor List (MDL) wrapper for safe kernel memory modification.
@@ -31,12 +26,12 @@ impl Mdl {
     /// for kernel access.
     ///
     /// # Arguments
-    /// 
+    ///
     /// * `dest` - Target memory address to be modified.
     /// * `size` - Size of the memory region to lock.
     ///
     /// # Returns
-    /// 
+    ///
     /// * `Some(Mdl)` - On success.
     /// * `None` - If allocation or mapping fails.
     pub fn new(dest: *const u8, size: usize) -> Option<Self> {
@@ -56,7 +51,14 @@ impl Mdl {
             MmProbeAndLockPages(mdl, KernelMode as i8, IoModifyAccess);
 
             // Map the locked pages for kernel access
-            let mapped_address = MmMapLockedPagesSpecifyCache(mdl, KernelMode as i8, MmCached, null_mut(), 0, HighPagePriority as u32 | MdlMappingNoExecute) as *mut u8;
+            let mapped_address = MmMapLockedPagesSpecifyCache(
+                mdl,
+                KernelMode as i8,
+                MmCached,
+                null_mut(),
+                0,
+                HighPagePriority as u32 | MdlMappingNoExecute,
+            ) as *mut u8;
             if mapped_address.is_null() {
                 wdk::println!("Failed to map blocked pages");
                 MmUnlockPages(mdl);
@@ -64,14 +66,17 @@ impl Mdl {
                 return None;
             }
 
-            Some(Self { mdl, mapped_address })
+            Some(Self {
+                mdl,
+                mapped_address,
+            })
         }
     }
 
     /// Copies memory to the mapped address.
     ///
     /// # Arguments
-    /// 
+    ///
     /// * `src` - Pointer to the source data.
     /// * `size` - Size of the data to copy.
     pub fn copy(&self, src: *const u8, size: usize) {

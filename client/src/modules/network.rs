@@ -1,4 +1,4 @@
-use crate::utils::{open_driver, PortType, Protocol};
+use crate::utils::{PortType, Protocol, open_driver};
 use common::structs::TargetPort;
 use std::{ffi::c_void, ptr::null_mut};
 use windows_sys::Win32::{
@@ -65,9 +65,15 @@ impl Network {
         };
 
         if status == 0 {
-            log::error!("DeviceIoControl failed with status: 0x{:08X}", unsafe { GetLastError() });
+            log::error!("DeviceIoControl failed with status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
-            log::info!("Port with number {} successfully {}hidden", port_number, if enable { "" } else { "un" });
+            log::info!(
+                "Port with number {} successfully {}hidden",
+                port_number,
+                if enable { "" } else { "un" }
+            );
         }
     }
 }

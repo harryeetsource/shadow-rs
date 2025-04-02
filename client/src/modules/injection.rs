@@ -38,7 +38,9 @@ impl Injection {
 
         log::info!("Checking if the file exists at the specified path");
         if !check_file(path) {
-            log::error!("File not found at the specified path: {path}. Please check the file path and try again");
+            log::error!(
+                "File not found at the specified path: {path}. Please check the file path and try again"
+            );
             return;
         }
 
@@ -67,7 +69,9 @@ impl Injection {
         if status == 0 {
             log::error!("DeviceIoControl Failed with status: 0x{:08X}", status);
         } else {
-            log::info!("Process injection was successfully performed on PID: {pid} using the file at path: {path}");
+            log::info!(
+                "Process injection was successfully performed on PID: {pid} using the file at path: {path}"
+            );
         }
     }
 }

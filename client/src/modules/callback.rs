@@ -1,4 +1,4 @@
-use crate::{utils::open_driver, utils::Callbacks};
+use crate::{utils::Callbacks, utils::open_driver};
 use common::structs::{CallbackInfoInput, CallbackInfoOutput};
 use std::{ffi::c_void, mem::size_of, ptr::null_mut};
 use windows_sys::Win32::{
@@ -127,7 +127,9 @@ impl Callback {
         };
 
         if status == 0 {
-            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe { GetLastError() });
+            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
             log::info!("Successfully removed callback at index: {index}");
         }
@@ -165,7 +167,9 @@ impl Callback {
         };
 
         if status == 0 {
-            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe { GetLastError() });
+            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
             log::info!("Successfully restored callback at index: {index}");
         }

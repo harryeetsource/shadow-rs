@@ -1,6 +1,6 @@
 use wdk_sys::{
-    ntddk::{KeStackAttachProcess, KeUnstackDetachProcess},
     KAPC_STATE, PRKPROCESS,
+    ntddk::{KeStackAttachProcess, KeUnstackDetachProcess},
 };
 
 /// A wrapper for managing the attachment to a process context in the Windows kernel.

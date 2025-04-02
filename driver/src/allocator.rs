@@ -1,5 +1,8 @@
 use core::alloc::{GlobalAlloc, Layout};
-use wdk_sys::{ntddk::{ExAllocatePool2, ExFreePool}, POOL_FLAG_NON_PAGED};
+use wdk_sys::{
+    POOL_FLAG_NON_PAGED,
+    ntddk::{ExAllocatePool2, ExFreePool},
+};
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: KernelAlloc = KernelAlloc;
@@ -31,7 +34,7 @@ unsafe impl GlobalAlloc for KernelAlloc {
         if memory.is_null() {
             return core::ptr::null_mut();
         }
-    
+
         memory.cast()
     }
 

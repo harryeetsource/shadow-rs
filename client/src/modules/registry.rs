@@ -1,6 +1,6 @@
 use crate::utils::open_driver;
-use std::{ffi::c_void, ptr::null_mut};
 use common::structs::TargetRegistry;
+use std::{ffi::c_void, ptr::null_mut};
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError, HANDLE},
     System::IO::DeviceIoControl,
@@ -42,17 +42,17 @@ impl Registry {
             value,
             if enable { "hide" } else { "unhide" }
         );
-        
+
         // Format the key into NT format.
         let formatted_key = format_registry_key(key);
         log::info!("Formatted key: '{}'", formatted_key);
-    
+
         let mut info_registry = TargetRegistry {
             enable,
             value: value.to_string(),
             key: formatted_key,
         };
-    
+
         log::debug!(
             "Sending DeviceIoControl command to {} protection for key: {} | value: {}",
             if enable { "enable" } else { "disable" },
@@ -73,7 +73,9 @@ impl Registry {
             )
         };
         if status == 0 {
-            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe { GetLastError() });
+            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
             log::info!(
                 "Registry protection {} for Key: {} and Value: {} succeeded",
@@ -100,18 +102,18 @@ impl Registry {
             value,
             if enable { "hide" } else { "unhide" }
         );
-        
+
         // Format the key.
         let formatted_key = format_registry_key(key);
         log::info!("Formatted key: '{}'", formatted_key);
-    
+
         let mut info_registry = TargetRegistry {
             enable,
             key: formatted_key,
             value: value.to_string(),
             ..Default::default()
         };
-    
+
         log::debug!(
             "Sending DeviceIoControl command to {} registry for Key: {} | Value: {}",
             if enable { "hide" } else { "unhide" },
@@ -130,9 +132,11 @@ impl Registry {
                 &mut return_buffer,
                 null_mut(),
             )
-        };   
+        };
         if status == 0 {
-            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe { GetLastError() });
+            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
             log::info!(
                 "Registry with Key: {} and Value: {} successfully {}hidden",

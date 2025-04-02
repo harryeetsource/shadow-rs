@@ -5,11 +5,11 @@ use log::{Level, LevelFilter};
 use std::{io::Write, path::Path, ptr::null_mut};
 use sysinfo::System;
 use windows_sys::{
-    w,
     Win32::{
-        Foundation::{GetLastError, GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE},
+        Foundation::{GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, INVALID_HANDLE_VALUE},
         Storage::FileSystem::{CreateFileW, FILE_ATTRIBUTE_NORMAL, OPEN_EXISTING},
     },
+    w,
 };
 
 mod keylogger;

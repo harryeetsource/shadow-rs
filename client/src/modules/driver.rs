@@ -34,7 +34,10 @@ impl Driver {
     /// * `name` - The name of the driver to hide or unhide.
     /// * `enable` - `true` to hide or `false` to unhide the driver.
     pub fn unhide_hide_driver(self, ioctl_code: u32, name: &String, enable: bool) {
-        log::debug!("Attempting to open the driver for {} operation", if enable { "hide" } else { "unhide" });
+        log::debug!(
+            "Attempting to open the driver for {} operation",
+            if enable { "hide" } else { "unhide" }
+        );
         log::debug!("Preparing structure for: {}", name);
         let mut info_driver = TargetDriver {
             name: name.to_string(),
@@ -42,7 +45,10 @@ impl Driver {
             ..Default::default()
         };
 
-        log::debug!("Sending DeviceIoControl command to {} driver", if enable { "hide" } else { "unhide" });
+        log::debug!(
+            "Sending DeviceIoControl command to {} driver",
+            if enable { "hide" } else { "unhide" }
+        );
         let mut return_buffer = 0;
         let status = unsafe {
             DeviceIoControl(
@@ -58,16 +64,21 @@ impl Driver {
         };
 
         if status == 0 {
-            log::error!("DeviceIoControl failed with status: 0x{:08X}", unsafe { GetLastError()});
+            log::error!("DeviceIoControl failed with status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
-            log::info!("Driver successfully {}hidden", if enable { "" } else { "un" });
+            log::info!(
+                "Driver successfully {}hidden",
+                if enable { "" } else { "un" }
+            );
         }
     }
 
     /// Blocks or unblocks a driver by sending an `IOCTL` request.
     ///
     /// # Arguments
-    /// 
+    ///
     /// - `ioctl_code` - The `IOCTL` control code for the operation.
     /// - `name` - The name of the driver to block or unblock.
     /// - `enable` - `true` to block the driver, `false` to unblock.
@@ -79,7 +90,10 @@ impl Driver {
             ..Default::default()
         };
 
-        log::debug!("Sending DeviceIoControl command to {} driver", if enable { "block" } else { "unblock" });
+        log::debug!(
+            "Sending DeviceIoControl command to {} driver",
+            if enable { "block" } else { "unblock" }
+        );
         let mut return_buffer = 0;
         let status = unsafe {
             DeviceIoControl(
@@ -95,9 +109,14 @@ impl Driver {
         };
 
         if status == 0 {
-            log::error!("DeviceIoControl failed with status: 0x{:08X}", unsafe { GetLastError()});
+            log::error!("DeviceIoControl failed with status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
-            log::info!("Driver successfully {}block", if enable { "" } else { "un" });
+            log::info!(
+                "Driver successfully {}block",
+                if enable { "" } else { "un" }
+            );
         }
     }
 
@@ -127,7 +146,9 @@ impl Driver {
         };
 
         if status == 0 {
-            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe { GetLastError() });
+            log::error!("DeviceIoControl Failed With Status: 0x{:08X}", unsafe {
+                GetLastError()
+            });
         } else {
             let total_modules = return_buffer as usize / size_of::<DriverInfo>();
             log::info!("Total modules found: {}", total_modules);

