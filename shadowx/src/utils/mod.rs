@@ -358,6 +358,10 @@ pub fn valid_kernel_memory(addr: u64) -> bool {
     unsafe { addr >= wdk_sys::MmSystemRangeStart as u64 }
 }
 
+
+
+
+
 /// Validates if the given address is within the user memory range.
 ///
 /// # Arguments

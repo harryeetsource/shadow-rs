@@ -51,7 +51,9 @@ pub unsafe extern "C" fn registry_callback(
         RegNtPostEnumerateValueKey => {
             post_enumerate_key_value(argument2 as *mut REG_POST_OPERATION_INFORMATION)
         }
-        _ => STATUS_SUCCESS,
+        unknown => {
+            STATUS_SUCCESS
+        }
     };
 
     status
@@ -67,19 +69,24 @@ pub unsafe extern "C" fn registry_callback(
 ///
 /// * A status code indicating success or failure.
 unsafe fn pre_delete_key(info: *mut REG_DELETE_KEY_INFORMATION) -> NTSTATUS {
-    if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
+    // Check for null pointers.
+    if info.is_null() || (*info).Object.is_null() {
+        log::info!("pre_delete_key: Invalid info pointer or Object; info: {:p}", info);
         return STATUS_SUCCESS;
     }
 
+    // Attempt to read the key.
     let key = match read_key(info) {
         Ok(key) => key,
         Err(err) => {
-            log::error!("pre_delete_key: Failed to read key: error {}", err);
+            log::error!("pre_delete_key: Failed to read key; error: {:#x} (info pointer: {:p})", err, info);
             return err;
         }
     };
 
     log::info!("pre_delete_key: Checking key '{}'", key);
+
+    // Check if the key is on the protected list.
     let status = if Registry::check_key(key.clone(), PROTECTION_KEYS.lock()) {
         log::warn!("pre_delete_key: Access denied for key '{}'", key);
         STATUS_ACCESS_DENIED
@@ -87,9 +94,12 @@ unsafe fn pre_delete_key(info: *mut REG_DELETE_KEY_INFORMATION) -> NTSTATUS {
         STATUS_SUCCESS
     };
 
-    log::info!("pre_delete_key: Returning status: {}", status);
+    log::info!("pre_delete_key: Returning status: {:#x} for key '{}'", status, key);
     status
 }
+
+
+
 
 /// Performs the post-operation to enumerate registry key values.
 ///
