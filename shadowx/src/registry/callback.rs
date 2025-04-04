@@ -314,7 +314,7 @@ unsafe fn pre_query_key(info: *mut REG_QUERY_KEY_INFORMATION) -> NTSTATUS {
 ///
 /// * A status code indicating success or failure.
 unsafe fn pre_delete_value_key(info: *mut REG_DELETE_VALUE_KEY_INFORMATION) -> NTSTATUS {
-    if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
+    if info.is_null() || (*info).Object.is_null() {
         return STATUS_SUCCESS;
     }
 
@@ -366,7 +366,7 @@ unsafe fn pre_delete_value_key(info: *mut REG_DELETE_VALUE_KEY_INFORMATION) -> N
 ///
 /// * A status code indicating success or failure.
 unsafe fn pre_set_value_key(info: *mut REG_SET_VALUE_KEY_INFORMATION) -> NTSTATUS {
-    if info.is_null() || (*info).Object.is_null() || !valid_kernel_memory((*info).Object as u64) {
+    if info.is_null() || (*info).Object.is_null()  {
         return STATUS_SUCCESS;
     }
 
