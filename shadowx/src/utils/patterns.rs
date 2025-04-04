@@ -242,11 +242,12 @@ pub unsafe fn find_zw_function(name: &str) -> Result<usize> {
 
 /// The `ETWTI_PATTERN` represents a sequence of machine instructions used for
 /// identifying the location of the `EtwThreatIntProvRegHandle` in memory.
-pub const ETWTI_PATTERN: [u8; 5] = [
-    0x33, 0xD2, // 33d2           xor  edx,edx
-    0x48, 0x8B,
-    0x0D, // 488b0dcd849300  mov  rcx,qword ptr [nt!EtwThreatIntProvRegHandle (xxxx)]
+// Fixed 7-byte pattern from disassembly.
+pub const ETWTI_PATTERN: [u8; 7] = [
+    0x4C, 0x8B, 0x15, 0xB5, 0xDF, 0xC7, 0x00,
 ];
+
+
 
 /// The `ZW_PATTERN` represents a sequence of machine instructions used for
 /// identifying system service routines within the Windows kernel.

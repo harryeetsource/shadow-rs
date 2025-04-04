@@ -330,7 +330,6 @@ unsafe fn pre_delete_value_key(info: *mut REG_DELETE_VALUE_KEY_INFORMATION) -> N
     if value_name.is_null()
         || (*value_name).Buffer.is_null()
         || (*value_name).Length == 0
-        || !valid_kernel_memory((*value_name).Buffer as u64)
     {
         log::info!("pre_delete_value_key: Invalid value name pointer or length.");
         return STATUS_SUCCESS;
@@ -382,7 +381,7 @@ unsafe fn pre_set_value_key(info: *mut REG_SET_VALUE_KEY_INFORMATION) -> NTSTATU
     if value_name.is_null()
         || (*value_name).Buffer.is_null()
         || (*value_name).Length == 0
-        || !valid_kernel_memory((*value_name).Buffer as u64)
+
     {
         log::info!("pre_set_value_key: Invalid value name pointer or length.");
         return STATUS_SUCCESS;

