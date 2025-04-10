@@ -68,7 +68,60 @@ pub unsafe fn scan_for_pattern(
         Err(ShadowError::PatternNotFound)
     }
 }
+pub unsafe fn scan_for_pattern_masked(
+    function_address: *mut c_void,
+    pattern: &[u8],
+    mask: &str,
+    offset: usize,
+    final_offset: isize,
+    size: usize,
+) -> Result<*mut u8> {
+    // Validate that the mask length matches the pattern length.
+    if mask.len() != pattern.len() {
+        return Err(ShadowError::InvalidMask);
+    }
+    let mask_bytes = mask.as_bytes();
 
+    // Create a byte slice for the memory region starting at the given address.
+    let function_bytes = from_raw_parts(function_address as *const u8, size);
+    let pattern_len = pattern.len();
+
+    // Look for the pattern in the memory region, honoring wildcards in the mask.
+    if let Some(x) = function_bytes.windows(pattern_len)
+        .position(|window| {
+            window.iter().enumerate().all(|(i, &byte)| {
+                // If the mask character is '?' then we accept any value, otherwise an exact match is required.
+                if mask_bytes[i] == b'?' {
+                    true
+                } else {
+                    byte == pattern[i]
+                }
+            })
+        })
+    {
+        // Calculate the position for further offset adjustment.
+        let position = x + offset;
+        // Make sure there are enough bytes left to read a 4-byte offset.
+        if position + 4 > function_bytes.len() {
+            return Err(ShadowError::PatternNotFound);
+        }
+        // Read a 4-byte offset from the found location (little-endian).
+        let offset_bytes = &function_bytes[position..position + 4];
+        let offset_val = i32::from_le_bytes(
+            offset_bytes
+                .try_into()
+                .map_err(|_| ShadowError::PatternNotFound)?
+        );
+        // Calculate the base address where the pattern was found.
+        let address = (function_address as *mut u8).add(x);
+        // Apply the final offset adjustment.
+        let next_address = address.offset(final_offset);
+        // Return the final computed address (adjusted by the read offset).
+        Ok(next_address.offset(offset_val as isize))
+    } else {
+        Err(ShadowError::PatternNotFound)
+    }
+}
 /// Retrieves the syscall index for a given function name.
 ///
 /// # Arguments
