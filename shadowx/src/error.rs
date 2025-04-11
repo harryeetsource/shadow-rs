@@ -43,7 +43,8 @@ pub enum ShadowError {
     /// This error occurs when an invalid or unsupported request is made to a device.
     #[error("Invalid Device Request")]
     InvalidDeviceRequest,
-
+    #[error("Invalid mask provided")]
+    InvalidMask,
     /// Represents an error where a null pointer was encountered.
     ///
     /// This error occurs when a null pointer is encountered during an operation that

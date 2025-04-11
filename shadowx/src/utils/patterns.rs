@@ -299,7 +299,23 @@ pub unsafe fn find_zw_function(name: &str) -> Result<usize> {
 pub const ETWTI_PATTERN: [u8; 7] = [
     0x4C, 0x8B, 0x15, 0xB5, 0xDF, 0xC7, 0x00,
 ];
-
+pub const FULL_PATTERN: [u8; 39] = [
+    0x4c, 0x89, 0x44, 0x24, 0x18, // mov [rsp+18h], r8
+    0x48, 0x89, 0x54, 0x24, 0x10, // mov [rsp+10h], rdx
+    0x48, 0x9c,                 // pushfq
+    0x53,                       // push rbx
+    0x55,                       // push rbp
+    0x56,                       // push rsi
+    0x57,                       // push rdi
+    0x41, 0x54,                 // push r12
+    0x41, 0x55,                 // push r13
+    0x41, 0x56,                 // push r14
+    0x41, 0x57,                 // push r15
+    0x48, 0x83, 0xec, 0x70,      // sub rsp,70h
+    0x4c, 0x8b, 0x15,           // mov r10, qword ptr [rip+imm32]
+    // The following 8 bytes are the relative displacement (wildcards).
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+];
 
 
 /// The `ZW_PATTERN` represents a sequence of machine instructions used for
