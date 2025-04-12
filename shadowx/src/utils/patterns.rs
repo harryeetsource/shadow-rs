@@ -341,3 +341,4 @@ pub static mut LDR_SHELLCODE: [u8; 31] = [
     0x48, 0x83, 0xC4, 0x28, // add rsp, 0x28
     0xC3, // ret
 ];
+

