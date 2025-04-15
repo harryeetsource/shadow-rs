@@ -71,7 +71,7 @@ pub unsafe extern "C" fn registry_callback(
 unsafe fn pre_delete_key(info: *mut REG_DELETE_KEY_INFORMATION) -> NTSTATUS {
     // Check for null pointers.
     if info.is_null() || (*info).Object.is_null() {
-        log::info!("pre_delete_key: Invalid info pointer or Object; info: {:p}", info);
+        
         return STATUS_SUCCESS;
     }
 
@@ -84,7 +84,7 @@ unsafe fn pre_delete_key(info: *mut REG_DELETE_KEY_INFORMATION) -> NTSTATUS {
         }
     };
 
-    log::info!("pre_delete_key: Checking key '{}'", key);
+    
 
     // Check if the key is on the protected list.
     let status = if Registry::check_key(key.clone(), PROTECTION_KEYS.lock()) {
@@ -331,7 +331,7 @@ unsafe fn pre_delete_value_key(info: *mut REG_DELETE_VALUE_KEY_INFORMATION) -> N
         || (*value_name).Buffer.is_null()
         || (*value_name).Length == 0
     {
-        log::info!("pre_delete_value_key: Invalid value name pointer or length.");
+        
         return STATUS_SUCCESS;
     }
 
@@ -383,7 +383,7 @@ unsafe fn pre_set_value_key(info: *mut REG_SET_VALUE_KEY_INFORMATION) -> NTSTATU
         || (*value_name).Length == 0
 
     {
-        log::info!("pre_set_value_key: Invalid value name pointer or length.");
+        
         return STATUS_SUCCESS;
     }
 
