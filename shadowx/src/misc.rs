@@ -41,25 +41,27 @@ impl Etw {
             return Err(ShadowError::FunctionExecutionFailed("MmGetSystemRoutineAddress", line!()));
         }
         log::info!("etwti_enable_disable: Retrieved system routine address: {:p}", function_address);
-        const FULL_MASK: &str = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx????????";
-
-        // Use the new masked scanner:
-        // - The mov instruction for r10 starts at offset 28 in FULL_PATTERN.
-        // - The 4-byte relative offset is located 3 bytes into that instruction (28 + 3 = 31).
-        // - The entire mov instruction is 7 bytes long (28 + 7 = 35), which is where we want the pointer to point.
-        let etwi_handle = scan_for_pattern_masked(
+        const MOV_PATTERN: [u8; 7] = [0x4C, 0x8B, 0x15, 0, 0, 0, 0]; // last 4 bytes are wildcards
+        const MOV_MASK: &str = "xxx????";
+    
+        // Scan a reasonable memory region for the pattern.
+        let etwti_handle = scan_for_pattern_masked(
             function_address,
-            &FULL_PATTERN,
-            FULL_MASK,
-            31,  // Offset within the pattern to read the 4-byte relative displacement.
-            35,  // Final pointer adjustment so that the result points immediately after the mov instruction.
-            0x1000,
+            &MOV_PATTERN,
+            MOV_MASK,
+            3,  // offset into the instruction where the 4-byte displacement is located
+            7,  // final adjustment: the mov instruction is 7 bytes long
+            0x1000, // scan size (adjust if needed)
         )?;
-        log::info!("etwti_enable_disable: Found ETWTI structure at address: {:p}", etwi_handle);
+        log::info!("Computed ETWTI base address at: {:p}", etwti_handle);
     
         // Calculate the TRACE_ENABLE_INFO structure address by applying known offsets.
         // These offsets (0x20 and 0x60) are derived from reverse engineering.
-        let trace_info = etwi_handle.offset(0x20).offset(0x60) as *mut TRACE_ENABLE_INFO;
+        let trace_info = etwti_handle.offset(0x20).offset(0x60) as *mut TRACE_ENABLE_INFO;
+        if (*trace_info).IsEnabled != 0 && (*trace_info).IsEnabled != 1 {
+                 return Err(ShadowError::InvalidMemory);
+             }
+        
         log::info!("etwti_enable_disable: TRACE_ENABLE_INFO located at: {:p}", trace_info);
         let new_state = if enable { 0x01 } else { 0x00 };
     
