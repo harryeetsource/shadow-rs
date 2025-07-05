@@ -42,7 +42,7 @@ The documentation on how to execute CLI commands can be found on the [**Wiki**](
 
 ## Features
  
-### Process Features
+### Process
 
 - ✅ Hide and unhide processes.
 - ✅ Modify process signature levels to handle `Protected Processes (PP)` and `Protected Process Light (PPL)`.
@@ -51,26 +51,26 @@ The documentation on how to execute CLI commands can be found on the [**Wiki**](
 - ✅ Terminate target processes.
 - ✅ List all protected and hidden processes.
 
-### Thread Features
+### Thread
 
 - ✅ Hide and unhide threads.
 - ✅ Protect threads from termination or suspension.
 - ✅ List all protected and hidden threads
 
-### Driver Features
+### Driver
 
 - ✅ Hide and unhide kernel-mode drivers.
 - ✅ Enumerate all loaded drivers.
 - ✅ Enable or disable Driver Signature Enforcement (`DSE`) to allow loading of unsigned drivers.
 - ✅ Blocking Driver Loading.
 
-### Callback Features
+### Callback
 
 - ✅ List registered callbacks for process creation, thread creation, image loading, and registry operations.
 - ✅ Remove or restore specific callbacks.
 - ✅ List all removed callbacks.
 
-### Misc Features
+### Misc
 
 - ✅ Capture keystrokes from user input in real-time with kernel-level interception.
 - ✅ Disable Microsoft-Windows-Threat-Intelligence (`EtwTi`).
@@ -84,17 +84,17 @@ The documentation on how to execute CLI commands can be found on the [**Wiki**](
 - ✅ Asynchronous Procedure Call (`APC`) injection to execute shellcode or DLLs in alertable threads.
 - ✅ Execute shellcode in processes using `Thread Hijacking`.
 
-### Module Features
+### Module
 
 - ✅ Hide modules from process memory listings.
 - ✅ Enumerate all loaded modules.
 
-### Registry Features
+### Registry
 
 - ✅ Hide and unhide registry keys and values to prevent detection and manipulation.
 - ✅ Apply registry protection to prevent key or value deletion or overwriting.
 
-### Network Features
+### Network
 
 - ✅ Hide and unhide network ports from netstat and similar monitoring tools.
 
