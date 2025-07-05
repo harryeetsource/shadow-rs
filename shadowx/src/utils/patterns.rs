@@ -3,21 +3,30 @@ use core::{
     ptr::{null_mut, read},
     slice::from_raw_parts,
 };
-use obfstr::obfstr;
 
+use obfstr::obfstr;
 use wdk_sys::{
     _SECTION_INHERIT::ViewUnmap,
-    ntddk::{ZwClose, ZwMapViewOfSection, ZwOpenSection, ZwUnmapViewOfSection},
+    ntddk::{
+        ZwClose, 
+        ZwMapViewOfSection, 
+        ZwOpenSection, 
+        ZwUnmapViewOfSection
+    },
     *,
 };
 
-use {
-    super::{InitializeObjectAttributes, address::get_module_base_address},
-    crate::{
-        Result,
-        data::{IMAGE_DOS_HEADER, IMAGE_EXPORT_DIRECTORY, IMAGE_NT_HEADERS, IMAGE_SECTION_HEADER},
-        error::ShadowError,
-        utils::uni,
+use super::{
+    InitializeObjectAttributes, 
+    address::get_module_base_address
+};
+use crate::{
+    Result,
+    error::ShadowError,
+    utils::uni,
+    data::{
+        IMAGE_DOS_HEADER, IMAGE_EXPORT_DIRECTORY, 
+        IMAGE_NT_HEADERS, IMAGE_SECTION_HEADER
     },
 };
 
@@ -206,8 +215,7 @@ pub unsafe fn find_zw_function(name: &str) -> Result<usize> {
     ZW_PATTERN[22] = ssn_bytes[1];
 
     let dos_header = ntoskrnl_addr as *const IMAGE_DOS_HEADER;
-    let nt_header =
-        (ntoskrnl_addr as usize + (*dos_header).e_lfanew as usize) as *const IMAGE_NT_HEADERS;
+    let nt_header = (ntoskrnl_addr as usize + (*dos_header).e_lfanew as usize) as *const IMAGE_NT_HEADERS;
     let section_header =
         (nt_header as usize + size_of::<IMAGE_NT_HEADERS>()) as *const IMAGE_SECTION_HEADER;
 
@@ -215,10 +223,8 @@ pub unsafe fn find_zw_function(name: &str) -> Result<usize> {
     for i in 0..(*nt_header).FileHeader.NumberOfSections as usize {
         let section = (*section_header.add(i)).Name;
         let name = core::str::from_utf8(&section).unwrap().trim_matches('\0');
-
         if name == obfstr!(".text") {
-            let text_start =
-                ntoskrnl_addr as usize + (*section_header.add(i)).VirtualAddress as usize;
+            let text_start = ntoskrnl_addr as usize + (*section_header.add(i)).VirtualAddress as usize;
             let text_end = text_start + (*section_header.add(i)).Misc.VirtualSize as usize;
             let data = core::slice::from_raw_parts(text_start as *const u8, text_end - text_start);
 

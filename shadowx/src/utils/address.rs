@@ -1,15 +1,25 @@
+use alloc::string::ToString;
 use core::{
     ffi::{CStr, c_void},
     ptr::null_mut,
     slice::from_raw_parts,
 };
 
-use crate::data::{IMAGE_DOS_HEADER, IMAGE_EXPORT_DIRECTORY, IMAGE_NT_HEADERS};
 use ntapi::ntexapi::SystemModuleInformation;
 use wdk_sys::{NT_SUCCESS, POOL_FLAG_NON_PAGED};
-use {super::pool::PoolMemory, alloc::string::ToString};
 
-use crate::{Result, SystemModuleInformation, data::ZwQuerySystemInformation, error::ShadowError};
+use super::pool::PoolMemory; 
+use crate::data::{
+    IMAGE_DOS_HEADER, 
+    IMAGE_EXPORT_DIRECTORY, 
+    IMAGE_NT_HEADERS
+};
+use crate::{
+    Result, 
+    SystemModuleInformation, 
+    data::ZwQuerySystemInformation, 
+    error::ShadowError
+};
 
 /// Gets the base address of a specified module by querying system module information.
 /// This function queries the system for all loaded modules and compares their names

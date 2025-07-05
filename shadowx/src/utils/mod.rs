@@ -5,21 +5,33 @@ use core::{
     slice::from_raw_parts,
 };
 
+use ntapi::ntexapi::{
+    PSYSTEM_PROCESS_INFORMATION, 
+    SystemProcessInformation
+};
 use wdk_sys::{
-    _KWAIT_REASON::{DelayExecution, UserRequest, WrAlertByThreadId},
-    ntddk::{MmGetSystemRoutineAddress, PsIsThreadTerminating},
+    _KWAIT_REASON::{
+        DelayExecution, 
+        UserRequest, 
+        WrAlertByThreadId
+    },
+    ntddk::{
+        MmGetSystemRoutineAddress, 
+        PsIsThreadTerminating
+    },
     *,
 };
 
-use ntapi::ntexapi::{PSYSTEM_PROCESS_INFORMATION, SystemProcessInformation};
-
 use crate::data::{
-    IMAGE_DOS_HEADER, IMAGE_EXPORT_DIRECTORY, IMAGE_NT_HEADERS, KTHREAD_STATE::Waiting,
+    IMAGE_DOS_HEADER, IMAGE_EXPORT_DIRECTORY, 
+    IMAGE_NT_HEADERS, KTHREAD_STATE::Waiting,
     LDR_DATA_TABLE_ENTRY, PEB,
 };
-
 use crate::{
-    ZwQuerySystemInformation, attach::ProcessAttach, error::ShadowError, pool::PoolMemory, *,
+    ZwQuerySystemInformation, 
+    attach::ProcessAttach, 
+    error::ShadowError, 
+    pool::PoolMemory, *,
 };
 
 pub mod address;
@@ -61,10 +73,7 @@ pub unsafe fn find_thread_alertable(target_pid: usize) -> Result<*mut _KTHREAD> 
     );
 
     if !NT_SUCCESS(status) {
-        return Err(ShadowError::ApiCallFailed(
-            "ZwQuerySystemInformation",
-            status,
-        ));
+        return Err(ShadowError::ApiCallFailed("ZwQuerySystemInformation", status));
     }
 
     // Iterate over process information to find the target PID and alertable thread
@@ -76,6 +85,7 @@ pub unsafe fn find_thread_alertable(target_pid: usize) -> Result<*mut _KTHREAD> 
                 (*process_info).Threads.as_ptr(),
                 (*process_info).NumberOfThreads as usize,
             );
+
             for &thread in threads_slice {
                 if thread.ThreadState == Waiting as u32
                     && thread.WaitReason == WrAlertByThreadId as u32
@@ -134,10 +144,7 @@ pub unsafe fn find_thread(target_pid: usize) -> Result<*mut _KTHREAD> {
     );
 
     if !NT_SUCCESS(status) {
-        return Err(ShadowError::ApiCallFailed(
-            "ZwQuerySystemInformation",
-            status,
-        ));
+        return Err(ShadowError::ApiCallFailed("ZwQuerySystemInformation", status));
     }
 
     // Iterate over process information to find the target PID and alertable thread
@@ -203,10 +210,7 @@ pub unsafe fn get_function_peb(
     // Access its `PEB`
     let peb = PsGetProcessPeb(process.e_process) as *mut PEB;
     if peb.is_null() || (*peb).Ldr.is_null() {
-        return Err(ShadowError::FunctionExecutionFailed(
-            "PsGetProcessPeb",
-            line!(),
-        ));
+        return Err(ShadowError::FunctionExecutionFailed("PsGetProcessPeb", line!()));
     }
 
     // Traverse the InLoadOrderModuleList to find the module
@@ -313,10 +317,7 @@ pub unsafe fn get_process_by_name(process_name: &str) -> Result<usize> {
     );
 
     if !NT_SUCCESS(status) {
-        return Err(ShadowError::ApiCallFailed(
-            "ZwQuerySystemInformation",
-            status,
-        ));
+        return Err(ShadowError::ApiCallFailed("ZwQuerySystemInformation", status));
     }
 
     let mut process_info = info_process;

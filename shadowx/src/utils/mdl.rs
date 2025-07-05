@@ -1,11 +1,17 @@
 use core::ptr::null_mut;
 use wdk_sys::ntddk::{
-    IoAllocateMdl, IoFreeMdl, MmMapLockedPagesSpecifyCache, MmProbeAndLockPages, MmUnlockPages,
+    IoAllocateMdl, IoFreeMdl, 
+    MmMapLockedPagesSpecifyCache, 
+    MmProbeAndLockPages, 
+    MmUnlockPages,
     MmUnmapLockedPages,
 };
 use wdk_sys::{
-    _LOCK_OPERATION::IoModifyAccess, _MEMORY_CACHING_TYPE::MmCached,
-    _MM_PAGE_PRIORITY::HighPagePriority, _MODE::KernelMode, MDL, MdlMappingNoExecute, PUCHAR,
+    _LOCK_OPERATION::IoModifyAccess,
+    _MEMORY_CACHING_TYPE::MmCached,
+    _MM_PAGE_PRIORITY::HighPagePriority, 
+    _MODE::KernelMode, MDL, 
+    MdlMappingNoExecute, PUCHAR,
 };
 
 /// Memory Descriptor List (MDL) wrapper for safe kernel memory modification.
@@ -59,6 +65,7 @@ impl Mdl {
                 0,
                 HighPagePriority as u32 | MdlMappingNoExecute,
             ) as *mut u8;
+            
             if mapped_address.is_null() {
                 wdk::println!("Failed to map blocked pages");
                 MmUnlockPages(mdl);
