@@ -14,54 +14,51 @@ extern crate alloc;
 
 /// Process management and utilities.
 mod process;
+pub use process::*;
 
 /// Thread management and utilities.
 mod thread;
+pub use thread::*;
 
 /// Code/DLL injection mechanisms.
 mod injection;
+pub use injection::*;
 
 /// Kernel module handling and driver utilities.
 mod module;
+pub use module::*;
 
 /// Driver-related functionality.
 mod driver;
+pub use driver::*;
 
 /// Miscellaneous kernel utilities.
 mod misc;
-
-/// Kernel offsets and constants.
-mod offsets;
+pub use misc::*;
 
 /// General-purpose utilities.
 mod utils;
+pub use utils::*;
 
 /// Data structures used throughout the library.
 mod data;
+pub use data::*;
 
 /// Port communication utilities.
 pub mod network;
+pub use network::*;
 
 /// Error handling utilities.
 pub mod error;
 
 /// Registry manipulation utilities.
 pub mod registry;
+pub use registry::*;
 
 /// Kernel callback management.
 pub mod callback;
-
-// Re-export modules for easier access
 pub use callback::*;
-pub use data::*;
-pub use driver::*;
-pub use injection::*;
-pub use misc::*;
-pub use module::*;
-pub use network::*;
-pub use process::*;
-pub use registry::*;
-pub use thread::*;
-pub use utils::*;
+
+mod offsets;
 
 pub(crate) type Result<T> = core::result::Result<T, error::ShadowError>;

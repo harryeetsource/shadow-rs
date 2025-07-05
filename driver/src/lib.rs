@@ -12,16 +12,16 @@ mod allocator;
 #[cfg(not(feature = "mapper"))]
 mod callback;
 
+use core::sync::atomic::Ordering;
+use spin::{Mutex, lazy::Lazy};
+use shadowx::{uni, error::ShadowError, network, Network};
+use wdk_sys::{*, ntddk::*, _MODE::KernelMode};
+
 #[cfg(not(feature = "mapper"))]
 use callback::{
     DRIVER_BASE, DRIVER_SIZE, 
     Callback
 };
-
-use spin::{Mutex, lazy::Lazy};
-use core::sync::atomic::Ordering;
-use shadowx::{uni, error::ShadowError, network, Network};
-use wdk_sys::{*, ntddk::*, _MODE::KernelMode};
 
 /// The name of the device in the device namespace.
 const DEVICE_NAME: &str = "\\Device\\shadow";

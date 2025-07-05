@@ -1,5 +1,5 @@
 use spin::Lazy;
-use wdk_sys::{ntddk::RtlGetVersion, RTL_OSVERSIONINFOW};
+use wdk_sys::{RTL_OSVERSIONINFOW, ntddk::RtlGetVersion};
 
 /// Constant values for Windows build numbers.
 const WIN_1507: u32 = 10240;

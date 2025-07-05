@@ -1,12 +1,24 @@
-use wdk_sys::{NTSTATUS, STATUS_SUCCESS};
 use alloc::vec::Vec;
-use common::{enums::Callbacks, structs::CallbackInfoOutput};
-use spin::{Lazy, Mutex};
 
+use spin::{Lazy, Mutex};
+use wdk_sys::{NTSTATUS, STATUS_SUCCESS};
+
+use common::{
+    enums::Callbacks, 
+    structs::CallbackInfoOutput
+};
+use crate::data::{
+    CallbackRestaure, 
+    LDR_DATA_TABLE_ENTRY
+};
+use crate::callback::{
+    CallbackResult, 
+    find_callback_address
+};
 use crate::{
-    error::ShadowError, utils::modules, Result,
-    callback::{find_callback_address, CallbackResult},
-    data::{CallbackRestaure, LDR_DATA_TABLE_ENTRY},
+    Result,
+    error::ShadowError,
+    modules,
 };
 
 /// Structure that manages callbacks in the system.

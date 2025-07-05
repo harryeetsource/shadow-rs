@@ -15,11 +15,8 @@ use common::{
     structs::*
 };
 
-use crate::utils::{
-    get_input_buffer, 
-    get_output_buffer
-};
-
+#[cfg(not(feature = "mapper"))]
+use shadowx::registry::Type;
 use shadowx::{
     Process, Thread, 
     Network, network
@@ -30,10 +27,11 @@ use shadowx::{
 };
 
 #[cfg(not(feature = "mapper"))]
-use shadowx::registry::Type;
-
-#[cfg(not(feature = "mapper"))]
 use crate::callback::{driver, process, thread};
+use crate::utils::{
+    get_input_buffer, 
+    get_output_buffer
+};
 
 /// Static structure to store hidden driver information.
 /// 

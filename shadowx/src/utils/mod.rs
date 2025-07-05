@@ -1,40 +1,25 @@
 use alloc::string::{String, ToString};
 use core::{
-    ffi::{c_void, CStr},
+    ffi::{CStr, c_void},
     ptr::null_mut,
     slice::from_raw_parts,
 };
 
 use wdk_sys::{
-    *, 
-    _KWAIT_REASON::{
-        WrAlertByThreadId, 
-        DelayExecution, 
-        UserRequest
-    },
-    ntddk::{
-        MmGetSystemRoutineAddress, 
-        PsIsThreadTerminating
-    },
+    _KWAIT_REASON::{DelayExecution, UserRequest, WrAlertByThreadId},
+    ntddk::{MmGetSystemRoutineAddress, PsIsThreadTerminating},
+    *,
 };
 
-use ntapi::ntexapi::{
-    SystemProcessInformation, 
-    PSYSTEM_PROCESS_INFORMATION
-};
+use ntapi::ntexapi::{PSYSTEM_PROCESS_INFORMATION, SystemProcessInformation};
 
 use crate::data::{
-    KTHREAD_STATE::Waiting, 
-    IMAGE_DOS_HEADER, IMAGE_EXPORT_DIRECTORY, 
-    IMAGE_NT_HEADERS, PEB, LDR_DATA_TABLE_ENTRY
+    IMAGE_DOS_HEADER, IMAGE_EXPORT_DIRECTORY, IMAGE_NT_HEADERS, KTHREAD_STATE::Waiting,
+    LDR_DATA_TABLE_ENTRY, PEB,
 };
 
 use crate::{
-    *, 
-    error::ShadowError, 
-    pool::PoolMemory,
-    attach::ProcessAttach,
-    ZwQuerySystemInformation,
+    ZwQuerySystemInformation, attach::ProcessAttach, error::ShadowError, pool::PoolMemory, *,
 };
 
 pub mod address;
@@ -42,10 +27,10 @@ pub mod attach;
 pub mod file;
 pub mod handle;
 pub mod lock;
+pub mod mdl;
 pub mod patterns;
 pub mod pool;
 pub mod uni;
-pub mod mdl;
 
 /// Find a thread with an alertable status for the given process (PID).
 ///
@@ -76,7 +61,10 @@ pub unsafe fn find_thread_alertable(target_pid: usize) -> Result<*mut _KTHREAD> 
     );
 
     if !NT_SUCCESS(status) {
-        return Err(ShadowError::ApiCallFailed("ZwQuerySystemInformation", status));
+        return Err(ShadowError::ApiCallFailed(
+            "ZwQuerySystemInformation",
+            status,
+        ));
     }
 
     // Iterate over process information to find the target PID and alertable thread
@@ -84,19 +72,23 @@ pub unsafe fn find_thread_alertable(target_pid: usize) -> Result<*mut _KTHREAD> 
     while (*process_info).NextEntryOffset != 0 {
         let pid = (*process_info).UniqueProcessId as usize;
         if pid == target_pid {
-            let threads_slice = from_raw_parts((*process_info).Threads.as_ptr(), (*process_info).NumberOfThreads as usize);
+            let threads_slice = from_raw_parts(
+                (*process_info).Threads.as_ptr(),
+                (*process_info).NumberOfThreads as usize,
+            );
             for &thread in threads_slice {
-                if thread.ThreadState == Waiting as u32 && 
-                    thread.WaitReason == WrAlertByThreadId as u32 || 
-                    thread.WaitReason == UserRequest as u32 ||
-                    thread.WaitReason == DelayExecution as u32
+                if thread.ThreadState == Waiting as u32
+                    && thread.WaitReason == WrAlertByThreadId as u32
+                    || thread.WaitReason == UserRequest as u32
+                    || thread.WaitReason == DelayExecution as u32
                 {
-                    let target_thread = if let Ok(thread) = Thread::new(thread.ClientId.UniqueThread as usize) {
-                        thread
-                    } else {
-                        continue;
-                    };
-    
+                    let target_thread =
+                        if let Ok(thread) = Thread::new(thread.ClientId.UniqueThread as usize) {
+                            thread
+                        } else {
+                            continue;
+                        };
+
                     if PsIsThreadTerminating(target_thread.e_thread) == 1 {
                         continue;
                     }
@@ -110,10 +102,14 @@ pub unsafe fn find_thread_alertable(target_pid: usize) -> Result<*mut _KTHREAD> 
             break;
         }
 
-        process_info = (process_info as *const u8).add((*process_info).NextEntryOffset as usize) as PSYSTEM_PROCESS_INFORMATION;
+        process_info = (process_info as *const u8).add((*process_info).NextEntryOffset as usize)
+            as PSYSTEM_PROCESS_INFORMATION;
     }
 
-    Err(ShadowError::FunctionExecutionFailed("find_thread_alertable", line!()))
+    Err(ShadowError::FunctionExecutionFailed(
+        "find_thread_alertable",
+        line!(),
+    ))
 }
 
 ///
@@ -138,7 +134,10 @@ pub unsafe fn find_thread(target_pid: usize) -> Result<*mut _KTHREAD> {
     );
 
     if !NT_SUCCESS(status) {
-        return Err(ShadowError::ApiCallFailed("ZwQuerySystemInformation", status));
+        return Err(ShadowError::ApiCallFailed(
+            "ZwQuerySystemInformation",
+            status,
+        ));
     }
 
     // Iterate over process information to find the target PID and alertable thread
@@ -146,7 +145,10 @@ pub unsafe fn find_thread(target_pid: usize) -> Result<*mut _KTHREAD> {
     while (*process_info).NextEntryOffset != 0 {
         let pid = (*process_info).UniqueProcessId as usize;
         if pid == target_pid {
-            let threads_slice = from_raw_parts((*process_info).Threads.as_ptr(), (*process_info).NumberOfThreads as usize);
+            let threads_slice = from_raw_parts(
+                (*process_info).Threads.as_ptr(),
+                (*process_info).NumberOfThreads as usize,
+            );
             for &thread in threads_slice {
                 let thread_id = thread.ClientId.UniqueThread as usize;
                 let target_thread = if let Ok(thread) = Thread::new(thread_id) {
@@ -167,10 +169,14 @@ pub unsafe fn find_thread(target_pid: usize) -> Result<*mut _KTHREAD> {
             break;
         }
 
-        process_info = (process_info as *const u8).add((*process_info).NextEntryOffset as usize) as PSYSTEM_PROCESS_INFORMATION;
+        process_info = (process_info as *const u8).add((*process_info).NextEntryOffset as usize)
+            as PSYSTEM_PROCESS_INFORMATION;
     }
 
-    Err(ShadowError::FunctionExecutionFailed("find_thread_alertable", line!()))
+    Err(ShadowError::FunctionExecutionFailed(
+        "find_thread_alertable",
+        line!(),
+    ))
 }
 
 /// Retrieves the address of a function within a specific module loaded in a process's PEB.
@@ -185,7 +191,11 @@ pub unsafe fn find_thread(target_pid: usize) -> Result<*mut _KTHREAD> {
 ///
 /// * `Ok(*mut c_void)` - A pointer to the function's address if found.
 /// * `Err(ShadowError)` - If the function or module is not found, or an error occurs during execution.
-pub unsafe fn get_function_peb(pid: usize, module_name: &str, function_name: &str) -> Result<*mut c_void> {
+pub unsafe fn get_function_peb(
+    pid: usize,
+    module_name: &str,
+    function_name: &str,
+) -> Result<*mut c_void> {
     // Recovering `PEPROCESS`
     let process = Process::new(pid)?;
     let mut attach_process = ProcessAttach::new(process.e_process);
@@ -193,10 +203,13 @@ pub unsafe fn get_function_peb(pid: usize, module_name: &str, function_name: &st
     // Access its `PEB`
     let peb = PsGetProcessPeb(process.e_process) as *mut PEB;
     if peb.is_null() || (*peb).Ldr.is_null() {
-        return Err(ShadowError::FunctionExecutionFailed("PsGetProcessPeb", line!()));
+        return Err(ShadowError::FunctionExecutionFailed(
+            "PsGetProcessPeb",
+            line!(),
+        ));
     }
 
-    // Traverse the InLoadOrderModuleList to find the module    
+    // Traverse the InLoadOrderModuleList to find the module
     let current = &mut (*(*peb).Ldr).InLoadOrderModuleList;
     let mut next = (*(*peb).Ldr).InLoadOrderModuleList.Flink;
 
@@ -216,7 +229,9 @@ pub unsafe fn get_function_peb(pid: usize, module_name: &str, function_name: &st
         );
 
         if buffer.is_empty() {
-            return Err(ShadowError::StringConversionFailed((*ldr_data).FullDllName.Buffer as usize));
+            return Err(ShadowError::StringConversionFailed(
+                (*ldr_data).FullDllName.Buffer as usize,
+            ));
         }
 
         // Check if the module name matches
@@ -227,7 +242,8 @@ pub unsafe fn get_function_peb(pid: usize, module_name: &str, function_name: &st
             let nt_header = (dll_base + (*dos_header).e_lfanew as usize) as *mut IMAGE_NT_HEADERS;
 
             // Retrieves the size of the export table
-            let export_directory = (dll_base as usize + (*nt_header).OptionalHeader.DataDirectory[0].VirtualAddress as usize)
+            let export_directory = (dll_base as usize
+                + (*nt_header).OptionalHeader.DataDirectory[0].VirtualAddress as usize)
                 as *const IMAGE_EXPORT_DIRECTORY;
 
             // Retrieving information from module names
@@ -241,10 +257,11 @@ pub unsafe fn get_function_peb(pid: usize, module_name: &str, function_name: &st
                 (dll_base as usize + (*export_directory).AddressOfFunctions as usize) as *const u32,
                 (*export_directory).NumberOfFunctions as usize,
             );
-            
+
             // Retrieving information from ordinals
             let ordinals = from_raw_parts(
-                (dll_base as usize + (*export_directory).AddressOfNameOrdinals as usize) as *const u16,
+                (dll_base as usize + (*export_directory).AddressOfNameOrdinals as usize)
+                    as *const u16,
                 (*export_directory).NumberOfNames as usize,
             );
 
@@ -253,9 +270,9 @@ pub unsafe fn get_function_peb(pid: usize, module_name: &str, function_name: &st
                 let ordinal = ordinals[i] as usize;
                 let address = (dll_base + functions[ordinal] as usize) as *mut c_void;
                 let name = CStr::from_ptr((dll_base + names[i] as usize) as *const i8)
-                        .to_str()
-                        .map_err(|_| ShadowError::StringConversionFailed(names[i] as usize))?;
-                    
+                    .to_str()
+                    .map_err(|_| ShadowError::StringConversionFailed(names[i] as usize))?;
+
                 if name == function_name {
                     return Ok(address);
                 }
@@ -296,7 +313,10 @@ pub unsafe fn get_process_by_name(process_name: &str) -> Result<usize> {
     );
 
     if !NT_SUCCESS(status) {
-        return Err(ShadowError::ApiCallFailed("ZwQuerySystemInformation", status));
+        return Err(ShadowError::ApiCallFailed(
+            "ZwQuerySystemInformation",
+            status,
+        ));
     }
 
     let mut process_info = info_process;
@@ -318,7 +338,8 @@ pub unsafe fn get_process_by_name(process_name: &str) -> Result<usize> {
             break;
         }
 
-        process_info = (process_info as *const u8).add((*process_info).NextEntryOffset as usize) as PSYSTEM_PROCESS_INFORMATION;
+        process_info = (process_info as *const u8).add((*process_info).NextEntryOffset as usize)
+            as PSYSTEM_PROCESS_INFORMATION;
     }
 
     Err(ShadowError::ProcessNotFound(process_name.to_string()))
@@ -358,7 +379,9 @@ pub fn valid_user_memory(addr: u64) -> bool {
 ///     and the return of how many loaded modules there are in PsLoadedModuleList.
 pub fn modules() -> Result<(*mut LDR_DATA_TABLE_ENTRY, i32)> {
     let ps_module = crate::uni::str_to_unicode(obfstr::obfstr!("PsLoadedModuleList"));
-    let ldr_data = unsafe { MmGetSystemRoutineAddress(&mut ps_module.to_unicode()) as *mut LDR_DATA_TABLE_ENTRY };
+    let ldr_data = unsafe {
+        MmGetSystemRoutineAddress(&mut ps_module.to_unicode()) as *mut LDR_DATA_TABLE_ENTRY
+    };
     if ldr_data.is_null() {
         return Err(ShadowError::NullPointer("LDR_DATA_TABLE_ENTRY"));
     }

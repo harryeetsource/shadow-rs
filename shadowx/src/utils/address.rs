@@ -1,26 +1,15 @@
 use core::{
-    ffi::{c_void, CStr},
+    ffi::{CStr, c_void},
     ptr::null_mut,
     slice::from_raw_parts,
 };
 
-use wdk_sys::{NT_SUCCESS, POOL_FLAG_NON_PAGED};
+use crate::data::{IMAGE_DOS_HEADER, IMAGE_EXPORT_DIRECTORY, IMAGE_NT_HEADERS};
 use ntapi::ntexapi::SystemModuleInformation;
-use {
-    super::pool::PoolMemory, 
-    alloc::string::ToString
-};
-use crate::data::{
-    IMAGE_DOS_HEADER, 
-    IMAGE_EXPORT_DIRECTORY, 
-    IMAGE_NT_HEADERS,
-};
+use wdk_sys::{NT_SUCCESS, POOL_FLAG_NON_PAGED};
+use {super::pool::PoolMemory, alloc::string::ToString};
 
-use crate::{
-    data::ZwQuerySystemInformation,
-    error::ShadowError, Result, 
-    SystemModuleInformation
-};
+use crate::{Result, SystemModuleInformation, data::ZwQuerySystemInformation, error::ShadowError};
 
 /// Gets the base address of a specified module by querying system module information.
 /// This function queries the system for all loaded modules and compares their names
@@ -56,7 +45,10 @@ pub unsafe fn get_module_base_address(module_name: &str) -> Result<*mut c_void> 
     );
 
     if !NT_SUCCESS(status) {
-        return Err(ShadowError::ApiCallFailed("ZwQuerySystemInformation", status));
+        return Err(ShadowError::ApiCallFailed(
+            "ZwQuerySystemInformation",
+            status,
+        ));
     }
 
     // Iterates over the list of modules to find the one that matches the provided name
@@ -72,7 +64,10 @@ pub unsafe fn get_module_base_address(module_name: &str) -> Result<*mut c_void> 
     }
 
     // If the module is not found, return an error
-    Err(ShadowError::FunctionExecutionFailed("get_module_base_address", line!()))
+    Err(ShadowError::FunctionExecutionFailed(
+        "get_module_base_address",
+        line!(),
+    ))
 }
 
 /// Gets the address of a specified function within a module.
@@ -91,10 +86,12 @@ pub unsafe fn get_function_address(
     dll_base: *mut c_void,
 ) -> Result<*mut c_void> {
     let dos_header = dll_base as *const IMAGE_DOS_HEADER;
-    let nt_header = (dll_base as usize + (*dos_header).e_lfanew as usize) as *const IMAGE_NT_HEADERS;
+    let nt_header =
+        (dll_base as usize + (*dos_header).e_lfanew as usize) as *const IMAGE_NT_HEADERS;
 
     // Retrieves the size of the export table
-    let export_directory = (dll_base as usize + (*nt_header).OptionalHeader.DataDirectory[0].VirtualAddress as usize)
+    let export_directory = (dll_base as usize
+        + (*nt_header).OptionalHeader.DataDirectory[0].VirtualAddress as usize)
         as *const IMAGE_EXPORT_DIRECTORY;
 
     // Retrieving information from module names

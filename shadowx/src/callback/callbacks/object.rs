@@ -1,17 +1,26 @@
-use wdk_sys::{NTSTATUS, STATUS_SUCCESS};
 use alloc::vec::Vec;
-use common::{enums::Callbacks, structs::CallbackInfoOutput};
-use spin::{Lazy, Mutex};
 
+use spin::{Lazy, Mutex};
+use wdk_sys::{NTSTATUS, STATUS_SUCCESS};
+
+use common::{
+    enums::Callbacks, 
+    structs::CallbackInfoOutput
+};
+use crate::data::{
+    CallbackRestaureOb, 
+    LDR_DATA_TABLE_ENTRY, 
+    OBCALLBACK_ENTRY
+};
+use crate::callback::{
+    CallbackResult, 
+    find_callback_address
+};
 use crate::{
+    Result,
     error::ShadowError,
-    lock::with_push_lock_exclusive, modules, Result,
-    callback::{find_callback_address, CallbackResult},
-    data::{
-        CallbackRestaureOb, 
-        OBCALLBACK_ENTRY, 
-        LDR_DATA_TABLE_ENTRY
-    },
+    lock::with_push_lock_exclusive,
+    modules,
 };
 
 /// Structure representing the Callback Object.
@@ -63,7 +72,10 @@ impl CallbackOb {
 
             // Traverse the list of callback entries to find the one matching the removed entry
             while next != current {
-                if !(*next).Enabled && !next.is_null() && (*next).Entry as u64 == callbacks[index].entry {
+                if !(*next).Enabled
+                    && !next.is_null()
+                    && (*next).Entry as u64 == callbacks[index].entry
+                {
                     // Re-enable the callback and remove it from the removed list
                     (*next).Enabled = true;
                     callbacks.remove(index);
@@ -113,8 +125,12 @@ impl CallbackOb {
                             index,
                             callback,
                             entry: (*next).Entry as u64,
-                            pre_operation: (*next).PreOperation.map_or(0u64, |pre_op| pre_op as u64),
-                            post_operation: (*next).PostOperation.map_or(0u64, |post_op| post_op as u64),
+                            pre_operation: (*next)
+                                .PreOperation
+                                .map_or(0u64, |pre_op| pre_op as u64),
+                            post_operation: (*next)
+                                .PostOperation
+                                .map_or(0u64, |post_op| post_op as u64),
                         };
 
                         // Disable the callback
@@ -231,7 +247,6 @@ impl CallbackOb {
     /// * `Err(ShadowError)` - if the operation fails.
     pub unsafe fn enumerate_removed() -> Result<Vec<CallbackInfoOutput>> {
         let mut callbacks = Vec::new();
-
         let callbacks_removed = INFO_CALLBACK_RESTAURE_OB.lock();
         let (mut ldr_data, module_count) = modules()?;
         let start_entry = ldr_data;

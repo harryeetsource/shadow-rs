@@ -1,13 +1,17 @@
-use crate::{
-    error::ShadowError,
-    lock::with_push_lock_exclusive,
-    offsets::{get_thread_list_entry_offset, get_thread_lock_offset},
-    Result,
-};
 use alloc::vec::Vec;
-use common::structs::TargetThread;
 use spin::{lazy::Lazy, mutex::Mutex};
 use wdk_sys::{ntddk::*, *};
+
+use common::structs::TargetThread;
+use crate::{
+    Result,
+    error::ShadowError,
+    lock::with_push_lock_exclusive,
+    offsets::{
+        get_thread_list_entry_offset, 
+        get_thread_lock_offset
+    },
+};
 
 // Max Number TIDS
 const MAX_TID: usize = 100;
@@ -49,11 +53,11 @@ impl Thread {
     /// ```
     #[inline]
     pub fn new(tid: usize) -> Result<Self> {
-        let mut thread = core::ptr::null_mut();
+        let mut e_thread = core::ptr::null_mut();
 
-        let status = unsafe { PsLookupThreadByThreadId(tid as _, &mut thread) };
+        let status = unsafe { PsLookupThreadByThreadId(tid as _, &mut e_thread) };
         if NT_SUCCESS(status) {
-            Ok(Self { e_thread: thread })
+            Ok(Self { e_thread })
         } else {
             Err(ShadowError::ApiCallFailed("PsLookupThreadByThreadId", status))
         }

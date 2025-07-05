@@ -1,7 +1,7 @@
 use core::ffi::c_void;
 use wdk_sys::{
-    ntddk::{ExAllocatePool2, ExFreePool},
     POOL_FLAGS,
+    ntddk::{ExAllocatePool2, ExFreePool},
 };
 
 /// A wrapper around memory allocated from the pool in the Windows kernel.

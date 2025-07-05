@@ -1,14 +1,14 @@
 use wdk_sys::{
-    ntddk::{ZwCreateFile, ZwQueryInformationFile, ZwReadFile},
     _FILE_INFORMATION_CLASS::FileStandardInformation,
+    ntddk::{ZwCreateFile, ZwQueryInformationFile, ZwReadFile},
     *,
 };
 
-use alloc::vec::Vec;
+use super::{InitializeObjectAttributes, handle::Handle};
 use crate::Result;
 use crate::error::ShadowError;
+use alloc::vec::Vec;
 use core::{ffi::c_void, ptr::null_mut};
-use super::{handle::Handle, InitializeObjectAttributes};
 
 /// Reads the content of a file given its path in the NT kernel environment.
 ///

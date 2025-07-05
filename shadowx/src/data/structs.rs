@@ -1,8 +1,8 @@
-use wdk_sys::*;
+use super::COMUNICATION_TYPE;
 use bitfield::bitfield;
 use common::enums::Callbacks;
-use super::COMUNICATION_TYPE;
 use core::{ffi::c_void, mem::ManuallyDrop};
+use wdk_sys::*;
 
 bitfield! {
     pub struct PS_PROTECTION(u8);
@@ -62,19 +62,19 @@ pub struct PEB_LDR_DATA {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LDR_DATA_TABLE_ENTRY {
-	pub InLoadOrderLinks: LIST_ENTRY,
+    pub InLoadOrderLinks: LIST_ENTRY,
     pub InMemoryOrderLinks: LIST_ENTRY,
-	pub InInitializationOrderLinks: LIST_ENTRY,
-	pub DllBase: *mut c_void,
-	pub EntryPoint: *mut c_void,
-	pub SizeOfImage: u32,
-	pub FullDllName: UNICODE_STRING,
-	pub BaseDllName: UNICODE_STRING,
-	pub Flags: u32,
-	pub LoadCount: u32,
-	pub TlsIndex: u16,
-	pub HashLinks: LIST_ENTRY,
-	pub TimeDateStamp: u32,
+    pub InInitializationOrderLinks: LIST_ENTRY,
+    pub DllBase: *mut c_void,
+    pub EntryPoint: *mut c_void,
+    pub SizeOfImage: u32,
+    pub FullDllName: UNICODE_STRING,
+    pub BaseDllName: UNICODE_STRING,
+    pub Flags: u32,
+    pub LoadCount: u32,
+    pub TlsIndex: u16,
+    pub HashLinks: LIST_ENTRY,
+    pub TimeDateStamp: u32,
 }
 
 #[repr(C)]

