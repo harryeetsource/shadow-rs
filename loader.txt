@@ -1,0 +1,16 @@
+kernel32!CreateProcessW
+└ KernelBase!CreateProcessInternalW
+  └ ntdll!NtCreateUserProcess ───────────────► [kernel]
+      MmCreateSection(SEC_IMAGE)              MiCreateImageFileMap, CI validation
+      PspAllocateProcess                      EPROCESS, token, handle table
+        MmInitializeProcessAddressSpace       CR3, map image + ntdll
+        MmCreatePeb
+      PspAllocateThread / PspCreateThread     ETHREAD, MmCreateTeb, user stack
+        KeInitThread                          trap frame → LdrInitializeThunk
+      PspInsertProcess / PspInsertThread      notify routines (EDR callbacks)
+  CsrClientCallServer(BasepCreateProcess)      csrss registration
+  NtResumeThread
+      ↓ first user-mode instruction
+ntdll!LdrInitializeThunk
+└ LdrpInitialize → LdrpInitializeProcess       heap, PEB.Ldr, imports, relocs, DllMain
+└ NtContinue → RtlUserThreadStart → BaseThreadInitThunk → AddressOfEntryPoint
